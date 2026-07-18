@@ -1,0 +1,1 @@
+{"name":"samgukzi8-re","version":"1.0.0","type":"module","scripts":{"build":"tsc","dev":"tsc --watch","check":"tsc --noEmit","test":"vitest run"},"devDependencies":{"@types/three":"^0.185.1","typescript":"^5.4.0","vitest":"^4.1.10"},"dependencies":{"three":"^0.170.0"}}

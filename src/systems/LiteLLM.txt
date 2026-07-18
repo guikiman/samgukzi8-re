@@ -1,0 +1,2 @@
+cd C:\Users\YG_PC\AppData\Roaming\opencode\
+litellm --config litellm_config.yaml --port 4000

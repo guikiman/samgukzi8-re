@@ -1,0 +1,46 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Malgun Gothic', 'Nanum Gothic', sans-serif; overflow: hidden; height: 100vh; }
+
+#game-container { display: flex; flex-direction: column; height: 100vh; }
+
+#top-bar { background: #16213e; padding: 8px 16px; display: flex; align-items: center; gap: 20px; border-bottom: 2px solid #0f3460; }
+#game-title { font-size: 18px; font-weight: bold; color: #e94560; letter-spacing: 2px; }
+#game-info { display: flex; gap: 16px; font-size: 14px; color: #a0a0c0; }
+#controls { margin-left: auto; display: flex; gap: 8px; }
+.game-btn { background: #0f3460; color: #e0e0e0; border: 1px solid #533483; padding: 6px 16px; cursor: pointer; font-size: 13px; border-radius: 3px; }
+.game-btn:hover { background: #533483; }
+.game-btn:disabled { opacity: 0.4; cursor: default; }
+.game-btn:disabled:hover { background: #0f3460; }
+
+#main-area { flex: 1; display: flex; overflow: hidden; }
+#game-canvas { flex: 1; background: #2a2a3e; cursor: crosshair; }
+
+#sidebar { width: 280px; background: #16213e; border-left: 2px solid #0f3460; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
+.panel { background: #1a1a30; padding: 10px; }
+.panel h3 { font-size: 13px; color: #e94560; margin-bottom: 8px; border-bottom: 1px solid #0f3460; padding-bottom: 4px; }
+#officer-detail, #faction-detail { font-size: 12px; color: #b0b0c0; min-height: 60px; }
+#log-panel { flex: 1; display: flex; flex-direction: column; }
+#log-content { flex: 1; font-size: 11px; color: #8080a0; overflow-y: auto; max-height: 300px; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #0f3460; }
+
+#bottom-bar { background: #16213e; padding: 4px 16px; display: flex; justify-content: space-between; font-size: 12px; color: #606080; border-top: 2px solid #0f3460; }
+
+/* Battle UI */
+#battle-phase { font-size: 13px; color: #e0e080; margin-bottom: 6px; }
+#battle-units { font-size: 11px; max-height: 200px; overflow-y: auto; }
+.battle-unit-card { background: #1e1e3a; padding: 4px 6px; margin-bottom: 3px; border-radius: 2px; border-left: 3px solid #4488cc; cursor: pointer; display: flex; justify-content: space-between; font-size: 11px; }
+.battle-unit-card:hover { background: #2a2a4e; }
+.battle-unit-card.deployed { opacity: 0.5; border-left-color: #44cc88; }
+.battle-unit-card.enemy { border-left-color: #cc4444; }
+.battle-unit-card .unit-name { font-weight: bold; color: #e0e0f0; }
+.battle-unit-card .unit-info { color: #8080a0; }
+.battle-unit-card .unit-hp { color: #44cc88; }
+.battle-unit-card .unit-morale { color: #ccaa44; }
+.battle-unit-card .unit-soldiers { color: #88aacc; }
+.hp-bar-bg { background: #2a2a3e; height: 4px; border-radius: 2px; margin-top: 2px; overflow: hidden; }
+.hp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.battle-btn { background: #0f3460; color: #e0e0e0; border: 1px solid #533483; padding: 5px 12px; cursor: pointer; font-size: 12px; border-radius: 3px; }
+.battle-btn:hover { background: #533483; }
+.battle-btn.danger { border-color: #cc4444; }
+.battle-btn.danger:hover { background: #663333; }
+.battle-btn:disabled { opacity: 0.4; cursor: default; }

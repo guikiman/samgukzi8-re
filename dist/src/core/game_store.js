@@ -1,0 +1,281 @@
+/**
+ * 삼국지 8 리메이크 — 싱글톤 중앙 상태 저장소
+ * 파일: src/core/game_store.ts
+ *
+ * 정규화 상태 트리 (Normalized State Tree)
+ * 모든 엔티티를 1차원 테이블로 정규화하여 O(1) 조회 보장
+ * Redux 스타일 구독 + 디스패치
+ */
+import { GamePhase, monthToSeason, } from './types.js';
+class GameStore {
+    constructor() {
+        this.state = {
+            officers: {},
+            factions: {},
+            cities: {},
+            armies: {},
+            relationships: {},
+            byFaction: { officers: {}, cities: {}, armies: {} },
+            byCity: { officers: {} },
+            byOfficer: { relationships: {} },
+        };
+        this.globalState = {
+            phase: GamePhase.TITLE,
+            time: { year: 192, month: 1 },
+            season: 'WINTER',
+            weather: 'SUNNY',
+            turnCount: 0,
+            selectedOfficerId: null,
+            playerFactionId: null,
+        };
+        this.listeners = new Set();
+    }
+    static getInstance() {
+        if (!GameStore.instance)
+            GameStore.instance = new GameStore();
+        return GameStore.instance;
+    }
+    getState() { return this.state; }
+    getGlobalState() { return this.globalState; }
+    // ============================================================
+    // 엔티티 조회 — O(1)
+    // ============================================================
+    getOfficer(id) { return this.state.officers[id] ?? null; }
+    getFaction(id) { return this.state.factions[id] ?? null; }
+    getCity(id) { return this.state.cities[id] ?? null; }
+    getArmy(id) { return this.state.armies[id] ?? null; }
+    getRelationships(officerId) {
+        return this.state.byOfficer.relationships[officerId] ?? [];
+    }
+    // ============================================================
+    // 엔티티 업데이트 — O(1) + 인덱스 동기화
+    // ============================================================
+    updateOfficer(id, updates) {
+        const existing = this.state.officers[id];
+        if (!existing)
+            return;
+        const oldFaction = existing.factionId;
+        const oldCity = existing.cityId;
+        this.state.officers[id] = { ...existing, ...updates, id };
+        const newOfficer = this.state.officers[id];
+        const newFaction = newOfficer.factionId;
+        const newCity = newOfficer.cityId;
+        if (oldFaction !== newFaction) {
+            removeFromIndex(this.state.byFaction.officers, oldFaction, id);
+            addToIndex(this.state.byFaction.officers, newFaction, id);
+        }
+        if (oldCity !== newCity) {
+            removeFromIndex(this.state.byCity.officers, oldCity, id);
+            addToIndex(this.state.byCity.officers, newCity, id);
+            if (oldFaction) {
+                const fac = this.state.factions[oldFaction];
+                if (fac) {
+                    const newCityList = fac.cities.filter(c => c !== oldCity);
+                    this.state.factions[oldFaction] = { ...fac, cities: newCityList };
+                }
+            }
+            if (newFaction && newCity) {
+                const fac = this.state.factions[newFaction];
+                if (fac && !fac.cities.includes(newCity)) {
+                    this.state.factions[newFaction] = { ...fac, cities: [...fac.cities, newCity] };
+                }
+            }
+        }
+        this.notify();
+    }
+    updateFaction(id, updates) {
+        const existing = this.state.factions[id];
+        if (!existing)
+            return;
+        this.state.factions[id] = { ...existing, ...updates, id };
+        this.notify();
+    }
+    updateCity(id, updates) {
+        const existing = this.state.cities[id];
+        if (!existing)
+            return;
+        const oldOwner = existing.ownerId;
+        this.state.cities[id] = { ...existing, ...updates, id };
+        const newOwner = this.state.cities[id].ownerId;
+        if (oldOwner !== newOwner) {
+            if (oldOwner) {
+                const fac = this.state.factions[oldOwner];
+                if (fac) {
+                    this.state.factions[oldOwner] = { ...fac, cities: fac.cities.filter(c => c !== id) };
+                }
+            }
+            if (newOwner) {
+                const fac = this.state.factions[newOwner];
+                if (fac && !fac.cities.includes(id)) {
+                    this.state.factions[newOwner] = { ...fac, cities: [...fac.cities, id] };
+                }
+            }
+        }
+        this.notify();
+    }
+    updateArmy(id, updates) {
+        const existing = this.state.armies[id];
+        if (!existing)
+            return;
+        this.state.armies[id] = { ...existing, ...updates, id };
+        this.notify();
+    }
+    // ============================================================
+    // 엔티티 추가/삭제
+    // ============================================================
+    addOfficer(officer) {
+        this.state.officers[officer.id] = officer;
+        addToIndex(this.state.byFaction.officers, officer.factionId, officer.id);
+        addToIndex(this.state.byCity.officers, officer.cityId, officer.id);
+        this.state.byOfficer.relationships[officer.id] = [];
+        this.notify();
+    }
+    removeOfficer(id) {
+        const officer = this.state.officers[id];
+        if (!officer)
+            return;
+        removeFromIndex(this.state.byFaction.officers, officer.factionId, id);
+        removeFromIndex(this.state.byCity.officers, officer.cityId, id);
+        delete this.state.officers[id];
+        delete this.state.byOfficer.relationships[id];
+        this.notify();
+    }
+    addRelationship(edge) {
+        const key = `${edge.source}_${edge.target}_${edge.type}`;
+        this.state.relationships[key] = edge;
+        if (!this.state.byOfficer.relationships[edge.source]) {
+            this.state.byOfficer.relationships[edge.source] = [];
+        }
+        this.state.byOfficer.relationships[edge.source].push(edge);
+        if (!this.state.byOfficer.relationships[edge.target]) {
+            this.state.byOfficer.relationships[edge.target] = [];
+        }
+        const reverseEdge = {
+            ...edge, source: edge.target, target: edge.source,
+        };
+        this.state.byOfficer.relationships[edge.target].push(reverseEdge);
+        this.notify();
+    }
+    // ============================================================
+    // 전역 상태 업데이트
+    // ============================================================
+    setGlobalState(updates) {
+        this.globalState = { ...this.globalState, ...updates };
+        if (updates.time) {
+            this.globalState.season = monthToSeason(this.globalState.time.month);
+        }
+        this.notify();
+    }
+    advanceTime() {
+        let { year, month } = this.globalState.time;
+        month += 1;
+        if (month > 12) {
+            month = 1;
+            year += 1;
+        }
+        this.globalState.time = { year, month };
+        this.globalState.season = monthToSeason(month);
+        this.globalState.turnCount += 1;
+        this.notify();
+    }
+    setPhase(phase) {
+        this.globalState.phase = phase;
+        this.notify();
+    }
+    // ============================================================
+    // 스냅샷 (세이브/로드)
+    // ============================================================
+    createSnapshot() {
+        return JSON.parse(JSON.stringify(this.state));
+    }
+    restoreSnapshot(snapshot) {
+        this.state = JSON.parse(JSON.stringify(snapshot));
+        this.notify();
+    }
+    // ============================================================
+    // 구독 시스템
+    // ============================================================
+    subscribe(listener) {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+    notify() {
+        for (const listener of this.listeners) {
+            listener(this.state, this.globalState);
+        }
+    }
+    // ============================================================
+    // 디스패치 (커맨드 실행)
+    // ============================================================
+    dispatch(command) {
+        const context = {
+            store: this,
+            logger: (msg) => console.log(msg),
+        };
+        return command.execute(context);
+    }
+    // ============================================================
+    // 월드 초기화
+    // ============================================================
+    initWorld(officers, factions, cities, armies) {
+        this.state = {
+            officers: {}, factions: {}, cities: {}, armies: {}, relationships: {},
+            byFaction: { officers: {}, cities: {}, armies: {} },
+            byCity: { officers: {} },
+            byOfficer: { relationships: {} },
+        };
+        for (const o of officers)
+            this.addOfficer(o);
+        for (const f of factions) {
+            this.state.factions[f.id] = f;
+            this.state.byFaction.officers[f.id] = f.officers.slice();
+            this.state.byFaction.cities[f.id] = f.cities.slice();
+            this.state.byFaction.armies[f.id] = f.armies.slice();
+        }
+        for (const c of cities) {
+            this.state.cities[c.id] = c;
+            this.state.byCity.officers[c.id] = c.officerIds.slice();
+        }
+        for (const a of armies)
+            this.state.armies[a.id] = a;
+        this.notify();
+    }
+    getOfficersByFaction(factionId) {
+        const ids = this.state.byFaction.officers[factionId] ?? [];
+        return ids.map(id => this.state.officers[id]).filter((o) => o !== undefined);
+    }
+    getCitiesByFaction(factionId) {
+        const ids = this.state.byFaction.cities[factionId] ?? [];
+        return ids.map(id => this.state.cities[id]).filter((c) => c !== undefined);
+    }
+    getOfficersByCity(cityId) {
+        const ids = this.state.byCity.officers[cityId] ?? [];
+        return ids.map(id => this.state.officers[id]).filter((o) => o !== undefined);
+    }
+    getAllOfficers() { return Object.values(this.state.officers); }
+    getAllFactions() { return Object.values(this.state.factions); }
+    getAllCities() { return Object.values(this.state.cities); }
+}
+GameStore.instance = null;
+// ============================================================
+// 인덱스 헬퍼 함수들
+// ============================================================
+function addToIndex(index, key, value) {
+    if (!key)
+        return;
+    if (!index[key])
+        index[key] = [];
+    if (!index[key].includes(value))
+        index[key].push(value);
+}
+function removeFromIndex(index, key, value) {
+    if (!key || !index[key])
+        return;
+    index[key] = index[key].filter(v => v !== value);
+    if (index[key].length === 0)
+        delete index[key];
+}
+// 싱글톤 인스턴스 내보내기
+export const gameStore = GameStore.getInstance();
+export { GameStore };
+//# sourceMappingURL=game_store.js.map

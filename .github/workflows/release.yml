@@ -1,0 +1,49 @@
+name: "Desktop Build & Release"
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+    matrix:
+      include:
+        - platform: 'macos-latest'
+        - platform: 'windows-latest'
+        - platform: 'ubuntu-22.04'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust tooling
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      - name: Build and Publish with Tauri Action
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: rtk8-desktop-v__VERSION__
+          releaseName: "삼국지 8 리메이크 데스크톱 v__VERSION__"
+          releaseBody: "자동 생성된 Tauri 데스크톱 플랫폼 패키지 릴리즈입니다."
+          releaseDraft: true
+          prerelease: false

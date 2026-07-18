@@ -1,0 +1,27 @@
+{
+    "id": "01",
+    "title_kr": "황건적의 난",
+    "title_en": "The Yellow Turban Rebellion",
+    "start_date": "184-01",
+    "description": "한나라의 쇠락과 함께 장각이 이끄는 황건적이 봉기하여 천하가 혼란에 빠집니다.",
+    "difficulty": 1,
+    "factions": [
+        {
+            "name": "하진",
+            "capital": "낙양",
+            "leader_id": "he_jin",
+            "officer_count": 
+        },
+        {
+            "name": "장각",
+            "capital": "거록",
+            "leader_id": "zhang_jiao",
+            "officer_count": 
+        }
+    ],
+    "special_conditions": {
+        "victory": "황건적 세력의 전멸 또는 낙양 수호",
+        "historical_mode": true
+    },
+    "status": "active"
+}

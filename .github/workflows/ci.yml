@@ -1,0 +1,38 @@
+name: CI — TypeScript Build + Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Run unit tests (Vitest)
+        run: npx vitest run --reporter=verbose
+
+      - name: Coverage report
+        run: npx vitest run --coverage
+        continue-on-error: true
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "::error::Build or test failed. Check logs above."

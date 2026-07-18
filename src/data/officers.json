@@ -1,0 +1,14 @@
+[
+  {
+    "id": "liu_bei",
+    "name": "유비",
+    "stats": { "lea": 81, "str": 77, "int": 78, "pol": 80 },
+    "city_id": "pyeong_won"
+  },
+  {
+    "id": "guan_yu",
+    "name": "관우",
+    "stats": { "lea": 96, "str": 97, "int": 75, "pol": 63 },
+    "city_id": "pyeong_won"
+  }
+]

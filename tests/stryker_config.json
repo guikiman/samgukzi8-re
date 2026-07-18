@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker/main/packages/api/schema/stryker-core.json",
+  "packageManager": "npm",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "testRunner": "vitest",
+  "concurrency": 4,
+  "mutate": [
+    "src/core/battle_calculations.ts",
+    "src/core/game_engine.ts",
+    "src/core/command_system.ts",
+    "src/core/turn_scheduler.ts",
+    "src/core/ai_worker.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "thresholds": {
+    "high": 85,
+    "low": 65,
+    "break": 50
+  },
+  "reporters": ["html", "clear-text", "progress"],
+  "tempDirName": ".stryker-tmp"
+}

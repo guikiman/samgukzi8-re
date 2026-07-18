@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>삼국지 8 리메이크</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game-container">
+    <div id="top-bar">
+        <div id="game-title">삼국지 8 리메이크</div>
+        <div id="game-info">
+            <span id="turn-display">턴 1</span>
+            <span id="date-display">184년 1월</span>
+            <span id="phase-display">TITLE</span>
+        </div>
+        <div id="controls">
+            <button id="btn-start" class="game-btn">게임 시작</button>
+            <button id="btn-pause" class="game-btn" disabled>일시정지</button>
+            <button id="btn-save" class="game-btn" disabled>저장</button>
+            <button id="btn-battle" class="game-btn" disabled>⚔️ 전투</button>
+        </div>
+    </div>
+    <div id="main-area">
+        <canvas id="game-canvas"></canvas>
+        <div id="sidebar">
+            <div id="officer-panel" class="panel">
+                <h3>무장 정보</h3>
+                <div id="officer-detail">무장을 선택하세요</div>
+            </div>
+            <div id="faction-panel" class="panel">
+                <h3>세력 정보</h3>
+                <div id="faction-detail">-</div>
+            </div>
+            <div id="battle-panel" class="panel" style="display:none;">
+                <h3>⚔️ 전투</h3>
+                <div id="battle-phase">-</div>
+                <div id="battle-units"></div>
+                <div id="battle-actions" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                    <button id="btn-battle-start" class="battle-btn" style="display:none;">전투 시작</button>
+                    <button id="btn-end-turn" class="battle-btn" style="display:none;">턴 종료</button>
+                    <button id="btn-battle-retreat" class="battle-btn danger" style="display:none;">퇴각</button>
+                </div>
+            </div>
+            <div id="log-panel" class="panel">
+                <h3>로그</h3>
+                <div id="log-content"><div class="log-entry">엔진 준비 완료</div></div>
+            </div>
+        </div>
+    </div>
+    <div id="bottom-bar">
+        <div id="status-text">초기화 중...</div>
+        <div id="fps-display">FPS: --</div>
+    </div>
+</div>
+<script type="module" src="dist/src/main.js"></script>
+</body>
+</html>

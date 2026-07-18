@@ -1,0 +1,14 @@
+[
+  {
+    "from": "liu_bei",
+    "to": "guan_yu",
+    "favor": 100,
+    "type": "SWORN_BROTHER" 
+  },
+  {
+    "from": "guan_yu",
+    "to": "liu_bei",
+    "favor": 100,
+    "type": "SWORN_BROTHER"
+  }
+]
