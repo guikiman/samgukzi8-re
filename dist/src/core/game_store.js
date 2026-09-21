@@ -149,6 +149,23 @@ class GameStore {
         delete this.state.byOfficer.relationships[id];
         this.notify();
     }
+    /** 세력 제거 — 멸망 처리용. 소속 도시 무주화 + 무장/인덱스 정리 [213] */
+    removeFaction(id) {
+        const faction = this.state.factions[id];
+        if (!faction)
+            return;
+        // 소속 도시 무주화 (updateCity 경유로 인덱스 동기화 보장)
+        for (const cityId of [...faction.cities]) {
+            this.updateCity(cityId, { ownerId: null });
+        }
+        for (const officerId of faction.officers) {
+            removeFromIndex(this.state.byFaction.officers, id, officerId);
+        }
+        delete this.state.factions[id];
+        delete this.state.byFaction.cities[id];
+        delete this.state.byFaction.armies[id];
+        this.notify();
+    }
     addRelationship(edge) {
         const key = `${edge.source}_${edge.target}_${edge.type}`;
         this.state.relationships[key] = edge;

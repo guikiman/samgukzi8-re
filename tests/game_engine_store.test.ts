@@ -319,10 +319,13 @@ describe('GameEngine', () => {
         expect(engine.canRedo()).toBe(true);
     });
 
-    it('subscribe/emitEvent event system', () => {
+    it('subscribe/emitEvent event system — 큐잉 후 processEventQueue에서 단일 발화', () => {
         const listener = vi.fn();
         engine.subscribe('TEST_EVENT', listener);
         engine.emitEvent({ id: 'e1', type: 'TEST_EVENT', payload: {}, timestamp: Date.now(), turn: 0 });
+        // emitEvent는 큐잉만 하고, processEventQueue에서 발화한다 (이중 dispatch 방지)
+        expect(listener).not.toHaveBeenCalled();
+        (engine as unknown as { processEventQueue(): void }).processEventQueue();
         expect(listener).toHaveBeenCalledTimes(1);
     });
 

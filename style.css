@@ -878,6 +878,16 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .od-relation { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 4px; border-radius: 4px; }
 .od-relation:hover { background: rgba(212, 175, 55, 0.06); }
 .od-relation-empty { color: var(--text-muted); justify-content: center; opacity: .6; }
+
+/* 무장 상호작용 [24][32][33] */
+.od-affinity-row { display: flex; justify-content: space-between; margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
+.od-affinity-row b { font-size: 13px; }
+.od-actions { display: flex; gap: 4px; margin: 8px 0 0; flex-wrap: wrap; }
+.od-action-btn { flex: 1 1 40%; background: rgba(212, 175, 55, 0.10); border: 1px solid rgba(212, 175, 55, 0.35); color: var(--gold, #d4af37); font-size: 11px; padding: 5px 2px; border-radius: 4px; cursor: pointer; transition: background .15s ease; }
+.od-action-btn:hover { background: rgba(212, 175, 55, 0.22); }
+.od-action-btn:active { transform: translateY(1px); }
+.od-action-msg { margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--text-muted); min-height: 16px; }
+.od-action-msg.is-err { color: #e05a5a; }
 .cdp-officer-clickable { cursor: pointer; }
 .cdp-officer-clickable:hover { border-color: var(--gold-dim, #d4af37); background: rgba(212, 175, 55, 0.05); }
 

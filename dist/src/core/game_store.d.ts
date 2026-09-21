@@ -28,6 +28,8 @@ declare class GameStore implements IGameStore {
     updateArmy(id: ArmyID, updates: Partial<Army>): void;
     addOfficer(officer: Officer): void;
     removeOfficer(id: OfficerID): void;
+    /** 세력 제거 — 멸망 처리용. 소속 도시 무주화 + 무장/인덱스 정리 [213] */
+    removeFaction(id: FactionID): void;
     addRelationship(edge: RelationshipEdge): void;
     setGlobalState(updates: Partial<GlobalState>): void;
     advanceTime(): void;

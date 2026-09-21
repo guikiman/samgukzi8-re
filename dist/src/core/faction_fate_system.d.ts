@@ -18,7 +18,5 @@ export declare class FactionFateSystem {
     constructor(store: GameStore);
     /** 멸망 판정 + 통일 확인 — 월말 정산 후 호출 */
     checkFates(): FactionFateReport;
-    /** 멸망 세력을 스토어에서 제거 (엔딩/정리용) */
-    purgeFaction(factionId: string): void;
 }
 //# sourceMappingURL=faction_fate_system.d.ts.map

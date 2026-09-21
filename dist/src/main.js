@@ -16,6 +16,8 @@ import { assembleReinforcements } from './core/reinforcement_system.js';
 import { SaveSlotManager } from './core/save_slot_manager.js';
 import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
+import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
+import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
 // DOM References
 // ============================================================
@@ -296,6 +298,7 @@ const cdpOfficers = document.getElementById('cdp-officers');
  */
 function renderOfficerDetail(officerId) {
     if (!officerId) {
+        delete officerDetail.dataset.officerId;
         officerDetail.innerHTML = '<div class="od-empty">무장을 선택하세요</div>';
         return;
     }
@@ -304,9 +307,11 @@ function renderOfficerDetail(officerId) {
     const store = engine['store'];
     const o = store.getOfficer(officerId);
     if (!o) {
+        delete officerDetail.dataset.officerId;
         officerDetail.innerHTML = '<div class="od-empty">무장을 찾을 수 없습니다</div>';
         return;
     }
+    officerDetail.dataset.officerId = officerId;
     const statBar = (label, val, color) => `<div class="od-stat-row"><span class="od-stat-label">${label}</span>` +
         `<div class="od-stat-bar"><div class="od-stat-fill" style="width:${val}%;background:${color}"></div></div>` +
         `<span class="od-stat-val">${val}</span></div>`;
@@ -327,6 +332,28 @@ function renderOfficerDetail(officerId) {
         : '<div class="od-relation od-relation-empty">특별한 관계 없음</div>';
     const statusLabel = o.status === 'FREE' ? '재야' : o.factionId ? (store.getFaction(o.factionId)?.name ?? '-') : '-';
     const loyaltyColor = o.loyalty >= 70 ? '#4caf50' : o.loyalty >= 40 ? '#e8c35a' : '#e05a5a';
+    // 상호작용 UI [24][32][33]: 플레이어 세력 소속 무장이 상대와 할 수 있는 행동
+    const gs = store.getGlobalState();
+    const myFaction = gs.playerFactionId ? store.getFaction(gs.playerFactionId) : null;
+    const actingOfficers = myFaction
+        ? store.getOfficersByCity(myFaction.capitalCityId ?? store.getOfficer(myFaction.leaderId)?.cityId ?? '')
+            .filter(off => off.factionId === gs.playerFactionId)
+        : [];
+    const actor = actingOfficers.find(off => off.id !== officerId) ?? actingOfficers[0];
+    const affinity = actor ? getAffinityBetween(store, actor.id, officerId) : 0;
+    const affinityColor = affinity >= 30 ? '#4caf50' : affinity <= -30 ? '#e05a5a' : 'var(--text, #ddd)';
+    const interactions = [
+        { kind: 'CHAT', label: '💬 대화', enabled: !!actor && checkInteraction(store, actor.id, officerId, 'CHAT').ok },
+        { kind: 'GIFT', label: '🎁 증정', enabled: !!actor && checkInteraction(store, actor.id, officerId, 'GIFT').ok },
+        { kind: 'DEBATE', label: '🎙️ 설전', enabled: !!actor },
+        { kind: 'DUEL', label: '⚔️ 일기토', enabled: !!actor },
+    ];
+    const actionButtons = interactions.map(i => `<button class="od-action-btn" data-kind="${i.kind}" data-actor="${actor?.id ?? ''}" ${i.enabled ? '' : 'disabled'}>${i.label}</button>`).join('');
+    const affinityRow = actor
+        ? `<div class="od-affinity-row"><span>${actor.name}과(와)의 우호도</span><b style="color:${affinityColor}">${affinity >= 0 ? '+' : ''}${affinity}</b></div>
+           <div class="od-actions">${actionButtons}</div>
+           <div class="od-action-msg" id="od-action-msg"></div>`
+        : '';
     officerDetail.innerHTML = `
         <div class="od-name-row"><span class="od-name">${o.name}</span><span class="od-faction">${statusLabel}</span></div>
         ${statBar('統率', o.stats.leadership, '#5a8fd4')}
@@ -338,6 +365,7 @@ function renderOfficerDetail(officerId) {
             <span>충성도 <b style="color:${loyaltyColor}">${o.loyalty}</b></span>
             <span>야망 <b>${o.ambition}</b></span>
         </div>
+        ${affinityRow}
         <div class="od-relations-title">── 인맥 ──</div>
         ${relationRows}
     `;
@@ -348,6 +376,27 @@ cdpOfficers.addEventListener('click', (e) => {
     if (!row)
         return;
     renderOfficerDetail(row.dataset.officerId ?? null);
+});
+// 상호작용 버튼 클릭 → 대화/증정/설전/일기토 실행 [24][32][33]
+officerDetail.addEventListener('click', (e) => {
+    const btn = e.target.closest('.od-action-btn');
+    if (!btn || btn.disabled || !engine)
+        return;
+    const kind = btn.dataset.kind;
+    const actorId = btn.dataset.actor;
+    const targetId = officerDetail.dataset.officerId;
+    if (!actorId || !targetId)
+        return;
+    const store = engine['store'];
+    const result = executeInteraction(store, actorId, targetId, kind);
+    renderOfficerDetail(targetId); // 우호도/버튼 상태 갱신 (메시지보다 먼저 — 재렌더가 내용을 지움)
+    const msg = officerDetail.querySelector('#od-action-msg');
+    if (msg) {
+        msg.textContent = result.message;
+        msg.classList.toggle('is-err', !result.success);
+    }
+    if (result.success)
+        addLog(result.message);
 });
 document.getElementById('cdp-close').addEventListener('click', () => {
     cityDetailPanel.style.display = 'none';
@@ -388,6 +437,8 @@ function renderCityDetailPanel(city, faction, switched) {
         .map(id => store_getOfficerSafe(id))
         .filter((o) => o !== null)
         .sort((a, b) => (b.stats.leadership + b.stats.might) - (a.stats.leadership + a.stats.might));
+    // 수용 중인 포로 표시 [131-145]
+    const captives = getCaptivesInCity(engine['store'], city.id);
     cdpOfficers.innerHTML = officers.map(o => {
         const isLeader = faction?.leaderId === o.id;
         const role = isLeader ? '군주' : (o.rank >= 5 ? '장군' : '무관');
@@ -398,7 +449,16 @@ function renderCityDetailPanel(city, faction, switched) {
             </div>
             <span class="cdp-officer-role">${role}</span>
         </div>`;
-    }).join('') || '<div class="cdp-officer-stats">재야 무장 없음</div>';
+    }).join('')
+        + (captives.length > 0
+            ? captives.map(c => `<div class="cdp-officer-row cdp-captive-row" data-officer-id="${c.id}">
+            <div>
+                <div class="cdp-officer-name">⛓️ ${c.name}</div>
+                <div class="cdp-officer-stats">포로 — 이번 달에 탈출할 수 있다 (지력 ${store_getOfficerSafe(c.id)?.stats.intelligence ?? '-'})</div>
+            </div>
+            <span class="cdp-officer-role">포로</span>
+        </div>`).join('')
+            : '');
     // 내정 명령 섹션은 플레이어 자기 도시에서만 활성
     const gs = engine['store'].getGlobalState();
     const isPlayerCity = faction !== null && city.ownerId === gs.playerFactionId;
@@ -1314,6 +1374,10 @@ function init() {
     });
     engine.subscribe('OFFICER_DEFECTED', (event) => {
         addLog(`🚪 배신: ${event.payload.officerName}이(가) 이탈했습니다`);
+    });
+    // 포로 탈출 이벤트 [131-145]
+    engine.subscribe('CAPTIVE_ESCAPED', (event) => {
+        addLog(`🏃 포로 탈출: ${event.payload.officerName}이(가) 수용소에서 탈출했습니다`);
     });
     engine.subscribe('GAME_ENDING', (event) => {
         showEnding(event.payload.ending, event.payload.winner);

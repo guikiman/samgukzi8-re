@@ -10,6 +10,7 @@
  * 순수 함수형 계산 + 스토어 적용 분리로 테스트 용이성 확보.
  */
 import { OfficerStatus } from './types.js';
+import { imprisonCaptive, releaseCaptivesInCity } from './captive_escape_system.js';
 /** 포획 확률 기본값 (무장 1명당) */
 export const BASE_CAPTURE_CHANCE = 0.35;
 /** 지력이 높으면 도주 확률 가산 (지력 100 → +25%p 감소) */
@@ -57,18 +58,25 @@ export function processBattleSpoils(store, attackerCityId, defenderCityId, rolls
             continue; // 재야 무장은 포로 대상 아님
         const roll = rollMap.get(officer.id) ?? Math.random();
         if (judgeCapture(officer, roll)) {
-            // 포획: 재야화 + 충성도 0 + 도시 이탈 (byCity 인덱스도 함께 갱신됨)
+            // 포획: 재야화 + 충성도 0 + [결함 수정] 공격자 도시 수용 (기존엔 cityId:null이라 어느 패널에도
+            //       나타나지 않는 유령 무장이 됐음). 공격자 도시의 officerIds와 수용 마커도 함께 관리.
             store.updateOfficer(officer.id, {
                 factionId: null,
                 status: OfficerStatus.FREE,
                 rank: 0,
                 loyalty: 0,
-                cityId: null,
+                cityId: attackerCityId,
             });
             const city = store.getCity(defenderCityId);
-            if (city) {
+            if (city && city.officerIds.includes(officer.id)) {
                 store.updateCity(defenderCityId, {
                     officerIds: city.officerIds.filter(id => id !== officer.id),
+                });
+            }
+            const holdingCity = store.getCity(attackerCityId);
+            if (holdingCity && !holdingCity.officerIds.includes(officer.id)) {
+                store.updateCity(attackerCityId, {
+                    officerIds: [...holdingCity.officerIds, officer.id],
                 });
             }
             const oldOwner = defenderCity.ownerId;
@@ -78,12 +86,18 @@ export function processBattleSpoils(store, attackerCityId, defenderCityId, rolls
                     store.updateFaction(oldOwner, { officers: fac.officers.filter(id => id !== officer.id) });
                 }
             }
+            imprisonCaptive(store, officer.id, attackerCityId);
             result.capturedOfficerIds.push(officer.id);
-            messages.push(`⛓️ ${officer.name} 포획! (등용 가능)`);
+            messages.push(`⛓️ ${officer.name} 포획! (${attackerCity.name} 수용)`);
         }
         else {
             result.escapedOfficerIds.push(officer.id);
         }
+    }
+    // 1.5) 구출(석방): 함락된 수비 도시에 수용 중이던 포로를 모두 석방한다 [131-145]
+    //      (포획 루프가 defenderCity의 officerIds를 수정하므로 함락 후 시점에 실행)
+    for (const rec of releaseCaptivesInCity(store, defenderCityId)) {
+        messages.push(rec.message);
     }
     // 2) 병력 약탈
     const troops = Math.floor(defenderCity.development * TROOP_PLUNDER_RATIO);

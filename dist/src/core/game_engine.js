@@ -16,6 +16,7 @@ import { FactionFateSystem } from './faction_fate_system.js';
 import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
+import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -251,6 +252,18 @@ export class GameEngine {
                     turn: this.store.getGlobalState().turnCount,
                 });
             }
+            // 포로 월간 탈출 판정 [131-145]
+            const captiveReport = processMonthlyCaptiveEvents(this.store);
+            for (const rec of captiveReport.escaped) {
+                console.log(`[Engine] ${rec.message}`);
+                this.emitEvent({
+                    id: `captive_escape_${rec.officerId}_${Date.now()}`,
+                    type: 'CAPTIVE_ESCAPED',
+                    payload: { officerId: rec.officerId, officerName: rec.officerName, fromCityId: rec.fromCityId },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             // 세력 운명 판정 — 멸망/통일 [213]
             const fateReport = this.fateSystem.checkFates();
             for (const name of fateReport.destroyedFactionNames) {
@@ -393,13 +406,10 @@ export class GameEngine {
         }
     }
     emitEvent(event) {
+        // [결함 수정] 큐에 넣고 리스너를 즉시 발화하면 processEventQueue에서
+        // 동일 이벤트가 2회 dispatch되었다 (유령 로그/이중 자동 저장의 원인).
+        // 큐잉만 하고 processEventQueue에서 단일 발화하도록 변경.
         this.eventQueue.push(event);
-        const listeners = this.eventListeners.get(event.type);
-        if (listeners) {
-            for (const listener of listeners) {
-                listener(event);
-            }
-        }
     }
     subscribe(eventType, listener) {
         if (!this.eventListeners.has(eventType)) {

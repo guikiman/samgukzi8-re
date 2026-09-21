@@ -33,9 +33,14 @@ export class FactionFateSystem {
                 destroyedNames.push(faction.name);
             }
         }
+        // [결함 수정] 멸망 세력을 스토어에서 완전 제거 — 기존에는 스토어에 남아
+        // 매 턴 같은 세력이 반복 멸망 판정되고 외교 AI/패널에 유령 세력이 등장했다
+        for (const id of destroyedIds) {
+            this.store.removeFaction(id);
+        }
         // 통일 판정: 도시를 보유한 생존 세력이 1개뿐인지
         const gs = this.store.getGlobalState();
-        const aliveFactions = this.store.getAllFactions().filter(f => this.store.getCitiesByFaction(f.id).length > 0 && !destroyedIds.includes(f.id));
+        const aliveFactions = this.store.getAllFactions().filter(f => this.store.getCitiesByFaction(f.id).length > 0);
         let ending = null;
         let winnerName = null;
         if (aliveFactions.length === 1 && this.store.getAllCities().every(c => c.ownerId === aliveFactions[0].id)) {
@@ -43,11 +48,6 @@ export class FactionFateSystem {
             winnerName = aliveFactions[0].name;
         }
         return { destroyedFactionIds: destroyedIds, destroyedFactionNames: destroyedNames, ending, winnerFactionName: winnerName };
-    }
-    /** 멸망 세력을 스토어에서 제거 (엔딩/정리용) */
-    purgeFaction(factionId) {
-        const state = this.store.state;
-        delete state.factions[factionId];
     }
 }
 //# sourceMappingURL=faction_fate_system.js.map
