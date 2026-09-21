@@ -12,6 +12,7 @@
  * - 이탈 시 재야화 (또는 인접 적 세력으로 투쟁 — 간단화: 재야)
  */
 import type { GameStore } from './game_store.js';
+import type { DiplomacyEngine } from './diplomacy_engine.js';
 export interface RecruitmentResult {
     success: boolean;
     message: string;
@@ -24,6 +25,10 @@ export interface DefectionReport {
 }
 export declare class OfficerLoyaltySystem {
     private store;
+    /** 세이브 직렬화 대상 외교 엔진 — 포로 등용 페널티에서 원수화에 사용 */
+    diplomacy: DiplomacyEngine | null;
+    /** 마지막 등용 시 발생한 페널티 메시지 (UI 로그 표시용 — 등용 1건당 갱신) */
+    penaltyMessages: string[];
     constructor(store: GameStore);
     /**
      * 등용 성공률 미리보기 [24] — UI 표시용 (실제 등용 로직과 동일 수식)

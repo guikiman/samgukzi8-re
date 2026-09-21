@@ -17,10 +17,19 @@ export declare const ESCAPE_EVENT = "ESCAPED";
 export declare const RELEASE_EVENT = "RESCUED";
 /** 월간 기본 탈출 확률 */
 export declare const BASE_ESCAPE_CHANCE = 0.15;
-/** 포로 여부 판별 — FREE + 무소속 + 충성도 0 + 마지막 마커가 CAPTURED */
+/** 포로 여부 판별 — FREE + 무소속 + 충성도 0 + 마지막 마커가 CAPTURED(@접미사 포함) */
 export declare function isCaptive(store: GameStore, officerId: string): boolean;
-/** 포획 직후 호출 — 포로를 공격자(수용) 도시에 배치하고 포로 마커를 남긴다 */
-export declare function imprisonCaptive(store: GameStore, officerId: string, holdingCityId: string): void;
+/** 포획 직후 호출 — 포로를 공격자(수용) 도시에 배치하고 포로 마커를 남긴다
+ *  마커 이벤트는 `CAPTURED@<원소속세력ID>` 형태로 원소속 세력을 함께 기록한다
+ *  (무소속 재야 출신이면 접미사 없음) — 등용 시 원소속 세력 원수화 페널티용 [24]
+ */
+export declare function imprisonCaptive(store: GameStore, officerId: string, holdingCityId: string, originFactionId?: string | null): void;
+/**
+ * 포로의 원소속 세력(포획 당시 소속) 조회 — 등용 페널티용 [24]
+ * 마지막 CAPTURED 마커의 `@<세력ID>` 접미사를 파싱한다.
+ * 접미사가 없거나 세력이 이미 멸망(스토어 제거)했으면 null을 반환한다.
+ */
+export declare function getCapturedOriginFaction(store: GameStore, officerId: string): string | null;
 /** 탈출 확률 계산 (순수 함수) — 지력이 높을수록 탈출에 유리 */
 export declare function judgeEscape(intelligence: number, roll: number): boolean;
 export interface CaptiveEscapeRecord {

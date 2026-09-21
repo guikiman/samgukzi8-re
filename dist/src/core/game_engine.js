@@ -33,6 +33,9 @@ export class GameEngine {
         this.fateSystem = new FactionFateSystem(this.store);
         this.loyaltySystem = new OfficerLoyaltySystem(this.store);
         this.diplomacy = new DiplomacyEngine();
+        // 포로 등용 시 원소속 세력 원수화 페널티에서 동일 외교 엔진 사용 [24][341-360]
+        this.loyaltySystem.diplomacy = this.diplomacy;
+        this.factionAI.diplomacy = this.diplomacy;
         this.diplomacyAI = new FactionDiplomacyAI(this.store, this.diplomacy);
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];

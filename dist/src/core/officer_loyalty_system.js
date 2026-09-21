@@ -13,6 +13,8 @@
  */
 import { OfficerStatus } from './types.js';
 import { applyRecruitFailure, getRecruitAffinityModifier } from './recruit_relation_system.js';
+import { applyCaptiveRecruitPenalty } from './captive_recruit_penalty_system.js';
+import { isCaptive } from './captive_escape_system.js';
 /** 등용 난이도 상수 */
 const BASE_RECRUIT_CHANCE = 0.35;
 const LOYALTY_DEFENSE = 0.5;
@@ -24,6 +26,10 @@ const AMBITION_DEFECT_MULTIPLIER = 1.5;
 export class OfficerLoyaltySystem {
     constructor(store) {
         this.store = store;
+        /** 세이브 직렬화 대상 외교 엔진 — 포로 등용 페널티에서 원수화에 사용 */
+        this.diplomacy = null;
+        /** 마지막 등용 시 발생한 페널티 메시지 (UI 로그 표시용 — 등용 1건당 갱신) */
+        this.penaltyMessages = [];
     }
     /**
      * 등용 성공률 미리보기 [24] — UI 표시용 (실제 등용 로직과 동일 수식)
@@ -87,8 +93,9 @@ export class OfficerLoyaltySystem {
             }
             return { success: false, message: `${target.name} 등용 실패 (확률 ${(chance * 100).toFixed(0)}%)` };
         }
-        // 편입 처리
+        // 편입 처리 — isCaptive 판정(포로 마커 + FREE/충성도 0 조건)을 상태 변경 전에 수행
         const oldFactionId = target.factionId;
+        const wasCaptive = isCaptive(this.store, officerId);
         this.store.updateOfficer(officerId, {
             factionId: targetFactionId,
             status: OfficerStatus.OFFICER,
@@ -113,6 +120,13 @@ export class OfficerLoyaltySystem {
         this.store.updateFaction(targetFactionId, {
             officers: [...faction.officers, officerId],
         });
+        // 포로 등용 페널티 [24][341-360]: 포로 출신이면 원소속 세력 원수화 (동맹 파기/선전포고 + 동료 NEMESIS)
+        if (this.diplomacy && wasCaptive) {
+            const penalty = applyCaptiveRecruitPenalty(this.store, this.diplomacy, targetFactionId, officerId);
+            for (const msg of penalty.messages) {
+                this.penaltyMessages.push(msg);
+            }
+        }
         return { success: true, message: `${target.name} 등용 성공! ${city.name}에 배치` };
     }
     /** 월간 배신 판정 — 충성도 낮은 무장 이탈 */

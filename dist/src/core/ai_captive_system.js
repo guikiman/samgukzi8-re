@@ -10,6 +10,8 @@
  * 순수 판정 함수 + 스토어 적용 분리로 테스트 용이성 확보.
  */
 import { OfficerStatus } from './types.js';
+import { applyCaptiveRecruitPenalty } from './captive_recruit_penalty_system.js';
+import { isCaptive } from './captive_escape_system.js';
 /** 군주 성향 판정 — 무력이 지력보다 크면 잔혹형(처형 성향) */
 export function isCruelLeader(might, intelligence) {
     return might > intelligence;
@@ -29,7 +31,7 @@ export function judgeCaptiveRecruit(charisma, roll) {
  * @param factionId 포로를 처리하는 (공성 승리한) 세력 ID
  * @param capturedOfficerIds processBattleSpoils가 반환한 포획 무장 ID 목록
  */
-export function processCaptives(store, factionId, capturedOfficerIds) {
+export function processCaptives(store, factionId, capturedOfficerIds, diplomacy) {
     const outcomes = [];
     const messages = [];
     if (capturedOfficerIds.length === 0)
@@ -79,12 +81,18 @@ export function processCaptives(store, factionId, capturedOfficerIds) {
                 store.updateCity(targetCity.id, { officerIds: [...targetCity.officerIds, officer.id] });
             }
             store.updateFaction(factionId, { officers: [...faction.officers, officer.id] });
+            const outcomeMessages = [`🤝 ${officer.name} 포로를 등용했다 (${targetCity.name} 배치)`];
+            // 포로 등용 페널티 [24][341-360]: 원소속 세력 원수화 (동맹 파기/선전포고 + 동료 NEMESIS)
+            if (diplomacy && isCaptive(store, officer.id)) {
+                const penalty = applyCaptiveRecruitPenalty(store, diplomacy, factionId, officer.id);
+                outcomeMessages.push(...penalty.messages);
+            }
             outcomes.push({
                 officerId: officer.id,
                 officerName: officer.name,
                 decision: 'RECRUIT',
                 success: true,
-                message: `🤝 ${officer.name} 포로를 등용했다 (${targetCity.name} 배치)`,
+                message: outcomeMessages[0],
             });
             messages.push(outcomes[outcomes.length - 1].message);
         }

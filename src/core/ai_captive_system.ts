@@ -12,6 +12,9 @@
 
 import type { GameStore } from './game_store.js';
 import { OfficerStatus } from './types.js';
+import { applyCaptiveRecruitPenalty } from './captive_recruit_penalty_system.js';
+import { isCaptive } from './captive_escape_system.js';
+import type { DiplomacyEngine } from './diplomacy_engine.js';
 
 export type CaptiveDecision = 'RECRUIT' | 'EXECUTE' | 'RELEASE';
 
@@ -54,6 +57,7 @@ export function processCaptives(
     store: GameStore,
     factionId: string,
     capturedOfficerIds: string[],
+    diplomacy?: DiplomacyEngine,
 ): CaptiveReport {
     const outcomes: CaptiveOutcome[] = [];
     const messages: string[] = [];
@@ -106,12 +110,18 @@ export function processCaptives(
                 store.updateCity(targetCity.id, { officerIds: [...targetCity.officerIds, officer.id] });
             }
             store.updateFaction(factionId, { officers: [...faction.officers, officer.id] });
+            const outcomeMessages: string[] = [`🤝 ${officer.name} 포로를 등용했다 (${targetCity.name} 배치)`];
+            // 포로 등용 페널티 [24][341-360]: 원소속 세력 원수화 (동맹 파기/선전포고 + 동료 NEMESIS)
+            if (diplomacy && isCaptive(store, officer.id)) {
+                const penalty = applyCaptiveRecruitPenalty(store, diplomacy, factionId, officer.id);
+                outcomeMessages.push(...penalty.messages);
+            }
             outcomes.push({
                 officerId: officer.id,
                 officerName: officer.name,
                 decision: 'RECRUIT',
                 success: true,
-                message: `🤝 ${officer.name} 포로를 등용했다 (${targetCity.name} 배치)`,
+                message: outcomeMessages[0],
             });
             messages.push(outcomes[outcomes.length - 1].message);
         } else {

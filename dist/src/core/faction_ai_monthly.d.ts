@@ -17,6 +17,8 @@ export interface FactionAIReport {
 }
 export declare class FactionAI {
     private store;
+    /** 포로 등용 원수화 페널티용 외교 엔진 (엔진에서 주입) */
+    diplomacy: import('./diplomacy_engine.js').DiplomacyEngine | null;
     constructor(store: GameStore);
     /** 월간 세력 AI 실행 — 플레이어 세력 제외 */
     runMonthly(): FactionAIReport[];

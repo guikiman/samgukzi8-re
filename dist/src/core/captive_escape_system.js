@@ -21,25 +21,31 @@ export const BASE_ESCAPE_CHANCE = 0.15;
 const INT_ESCAPE_FACTOR = 0.0015;
 /** 탈출 확률 상한 */
 const MAX_ESCAPE_CHANCE = 0.5;
-/** 마지막 포로 관련 마커 이벤트 조회 (자기-엣지 history 기준) */
+/** 마지막 포로 관련 마커 이벤트 조회 (자기-엣지 history 기준)
+ *  CAPTURED 마커는 `CAPTURED@<세력ID>` 접미사를 가질 수 있으므로 startsWith로 매칭 */
 function lastCaptiveEvent(store, officerId) {
     const edge = store.getRelationships(officerId).find(e => e.source === officerId && e.target === officerId);
     if (!edge)
         return null;
-    const markers = edge.history.filter(h => h.event === CAPTURE_MARKER_EVENT || h.event === ESCAPE_EVENT || h.event === RELEASE_EVENT);
+    const markers = edge.history.filter(h => h.event === CAPTURE_MARKER_EVENT || h.event.startsWith(CAPTURE_MARKER_EVENT + '@')
+        || h.event === ESCAPE_EVENT || h.event === RELEASE_EVENT);
     return markers.length > 0 ? markers[markers.length - 1].event : null;
 }
-/** 포로 여부 판별 — FREE + 무소속 + 충성도 0 + 마지막 마커가 CAPTURED */
+/** 포로 여부 판별 — FREE + 무소속 + 충성도 0 + 마지막 마커가 CAPTURED(@접미사 포함) */
 export function isCaptive(store, officerId) {
     const o = store.getOfficer(officerId);
     if (!o)
         return false;
     if (o.status !== OfficerStatus.FREE || o.factionId !== null || o.loyalty !== 0)
         return false;
-    return lastCaptiveEvent(store, officerId) === CAPTURE_MARKER_EVENT;
+    const last = lastCaptiveEvent(store, officerId);
+    return last === CAPTURE_MARKER_EVENT || (last?.startsWith(CAPTURE_MARKER_EVENT + '@') ?? false);
 }
-/** 포획 직후 호출 — 포로를 공격자(수용) 도시에 배치하고 포로 마커를 남긴다 */
-export function imprisonCaptive(store, officerId, holdingCityId) {
+/** 포획 직후 호출 — 포로를 공격자(수용) 도시에 배치하고 포로 마커를 남긴다
+ *  마커 이벤트는 `CAPTURED@<원소속세력ID>` 형태로 원소속 세력을 함께 기록한다
+ *  (무소속 재야 출신이면 접미사 없음) — 등용 시 원소속 세력 원수화 페널티용 [24]
+ */
+export function imprisonCaptive(store, officerId, holdingCityId, originFactionId) {
     const officer = store.getOfficer(officerId);
     if (!officer || !store.getCity(holdingCityId))
         return;
@@ -59,7 +65,30 @@ export function imprisonCaptive(store, officerId, holdingCityId) {
     if (!selfEdge)
         return;
     const { year, month } = store.getGlobalState().time;
-    selfEdge.history.push({ year, month, event: CAPTURE_MARKER_EVENT, delta: 0 });
+    // 원소속 세력: 호출측이 명시 전달 우선, 없으면 현재 소속(포획 후면 이미 null)
+    const origin = originFactionId !== undefined ? originFactionId : officer.factionId;
+    const originSuffix = origin ? `@${origin}` : '';
+    selfEdge.history.push({ year, month, event: CAPTURE_MARKER_EVENT + originSuffix, delta: 0 });
+}
+/**
+ * 포로의 원소속 세력(포획 당시 소속) 조회 — 등용 페널티용 [24]
+ * 마지막 CAPTURED 마커의 `@<세력ID>` 접미사를 파싱한다.
+ * 접미사가 없거나 세력이 이미 멸망(스토어 제거)했으면 null을 반환한다.
+ */
+export function getCapturedOriginFaction(store, officerId) {
+    const edge = store.getRelationships(officerId).find(e => e.source === officerId && e.target === officerId);
+    if (!edge)
+        return null;
+    const markers = edge.history.filter(h => h.event.startsWith(CAPTURE_MARKER_EVENT));
+    if (markers.length === 0)
+        return null;
+    const last = markers[markers.length - 1];
+    const at = last.event.indexOf('@');
+    if (at === -1)
+        return null;
+    const factionId = last.event.slice(at + 1);
+    // 멸망으로 스토어에서 제거된 세력이면 페널티 대상 아님
+    return store.getFaction(factionId) ? factionId : null;
 }
 /** 마커 해제 — 탈출/석방 시점에 이력을 남긴다 */
 function releaseMarker(store, officerId, event) {

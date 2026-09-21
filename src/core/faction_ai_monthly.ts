@@ -36,6 +36,9 @@ export interface FactionAIReport {
 }
 
 export class FactionAI {
+    /** 포로 등용 원수화 페널티용 외교 엔진 (엔진에서 주입) */
+    diplomacy: import('./diplomacy_engine.js').DiplomacyEngine | null = null;
+
     constructor(private store: GameStore) {}
 
     /** 월간 세력 AI 실행 — 플레이어 세력 제외 */
@@ -128,9 +131,9 @@ export class FactionAI {
                 if (prevOwnerId) {
                     const spoils = processBattleSpoils(this.store, src.id, target.id);
                     actions.push(...spoils.messages);
-                    // AI 포로 후처리 [121-130]: 등용/처형/석방 판정
-                    if (spoils.capturedOfficerIds.length > 0) {
-                        const captiveReport = processCaptives(this.store, faction.id, spoils.capturedOfficerIds);
+                    // AI 포로 후처리 [121-130]: 등용/처형/석방 판정 (등용 시 원수화 페널티 포함)
+                    if (spoils.capturedOfficerIds.length > 0 && this.diplomacy) {
+                        const captiveReport = processCaptives(this.store, faction.id, spoils.capturedOfficerIds, this.diplomacy);
                         actions.push(...captiveReport.messages);
                     }
                 }

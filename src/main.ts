@@ -604,8 +604,14 @@ document.getElementById('cdp-recruit-targets')!.addEventListener('click', (e) =>
     if (!gs.playerFactionId) return;
     const playerCity = store.getCitiesByFaction(gs.playerFactionId)[0];
     if (!playerCity) return;
-    const result = engine['loyaltySystem'].recruit(btn.dataset.officer!, gs.playerFactionId, playerCity.id);
+    const loyalty = engine['loyaltySystem'];
+    loyalty.penaltyMessages = [];
+    const result = loyalty.recruit(btn.dataset.officer!, gs.playerFactionId, playerCity.id);
     addLog(result.message);
+    // 포로 등용 페널티 메시지 (원소속 세력 원수화) [24][341-360]
+    for (const msg of loyalty.penaltyMessages) {
+        addLog(msg);
+    }
     const target = store.getCity(currentPanelCityId);
     if (target) {
         const fac = target.ownerId ? store.getFaction(target.ownerId) : null;

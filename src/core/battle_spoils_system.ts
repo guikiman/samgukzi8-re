@@ -83,6 +83,8 @@ export function processBattleSpoils(
         if (officer.status === OfficerStatus.FREE) continue; // 재야 무장은 포로 대상 아님
         const roll = rollMap.get(officer.id) ?? Math.random();
         if (judgeCapture(officer, roll)) {
+            // 원소속 세력 기록 — factionId null화 전에 확보 (등용 원수화 페널티용 [24])
+            const originFactionId = officer.factionId;
             // 포획: 재야화 + 충성도 0 + [결함 수정] 공격자 도시 수용 (기존엔 cityId:null이라 어느 패널에도
             //       나타나지 않는 유령 무장이 됐음). 공격자 도시의 officerIds와 수용 마커도 함께 관리.
             store.updateOfficer(officer.id, {
@@ -111,7 +113,7 @@ export function processBattleSpoils(
                     store.updateFaction(oldOwner, { officers: fac.officers.filter(id => id !== officer.id) });
                 }
             }
-            imprisonCaptive(store, officer.id, attackerCityId);
+            imprisonCaptive(store, officer.id, attackerCityId, originFactionId);
             result.capturedOfficerIds.push(officer.id);
             messages.push(`⛓️ ${officer.name} 포획! (${attackerCity.name} 수용)`);
         } else {

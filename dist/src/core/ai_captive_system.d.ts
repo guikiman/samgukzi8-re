@@ -10,6 +10,7 @@
  * 순수 판정 함수 + 스토어 적용 분리로 테스트 용이성 확보.
  */
 import type { GameStore } from './game_store.js';
+import type { DiplomacyEngine } from './diplomacy_engine.js';
 export type CaptiveDecision = 'RECRUIT' | 'EXECUTE' | 'RELEASE';
 export interface CaptiveOutcome {
     officerId: string;
@@ -33,5 +34,5 @@ export declare function judgeCaptiveRecruit(charisma: number, roll: number): boo
  * @param factionId 포로를 처리하는 (공성 승리한) 세력 ID
  * @param capturedOfficerIds processBattleSpoils가 반환한 포획 무장 ID 목록
  */
-export declare function processCaptives(store: GameStore, factionId: string, capturedOfficerIds: string[]): CaptiveReport;
+export declare function processCaptives(store: GameStore, factionId: string, capturedOfficerIds: string[], diplomacy?: DiplomacyEngine): CaptiveReport;
 //# sourceMappingURL=ai_captive_system.d.ts.map
