@@ -43,16 +43,23 @@ export class DiplomacyEngine {
     }
 
     /**
-     * 동맹 제안
-     * 전쟁 중인 세력과는 불가
+     * 동맹 제안 [341-360][11]
+     * 전쟁 중인 세력과는 불가. 평판 보정: 제안자의 명성이 높으면 상대가 받아들이기 쉽고,
+     * 악명이 높으면 경계해 거절 확률 상승. reputationModifier는 스토어 연동 시 주입.
      */
-    formAlliance(a: FactionID, b: FactionID): DiplomacyResult {
+    formAlliance(a: FactionID, b: FactionID, reputationModifier: number = 0): DiplomacyResult {
         const current = this.getRelation(a, b);
         if (current === FactionRelation.WAR) {
             return { success: false, message: '전쟁 중인 세력과 동맹할 수 없습니다.' };
         }
+        // 평판 반영 수락 판정 — 보정 0이면 기존처럼 무조건 성공 (하위 호환)
+        if (reputationModifier < 0 && Math.random() < -reputationModifier) {
+            return { success: false, message: '상대가 당신 세력의 악명을 이유로 동맹을 거절했습니다.' };
+        }
         this.setRelation(a, b, FactionRelation.ALLIANCE);
-        return { success: true, message: '동맹을 체결했습니다.' };
+        return { success: true, message: reputationModifier > 0
+            ? '당신의 명성 덕분에 상대가 기꺼이 동맹을 수락했습니다.'
+            : '동맹을 체결했습니다.' };
     }
 
     /**
@@ -166,11 +173,15 @@ export class DiplomacyEngine {
     }
 
     /**
-     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교]
+     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교][11]
+     * 평판 보정: 악명 높은 제안자는 거절당할 수 있음 (보정 0이면 기존 동작)
      */
-    makePeace(a: FactionID, b: FactionID): DiplomacyResult {
+    makePeace(a: FactionID, b: FactionID, reputationModifier: number = 0): DiplomacyResult {
         if (this.getRelation(a, b) !== FactionRelation.WAR) {
             return { success: false, message: '전쟁 중이 아닙니다.' };
+        }
+        if (reputationModifier < 0 && Math.random() < -reputationModifier) {
+            return { success: false, message: '상대가 당신 세력의 악명을 이유로 휴전을 거절했습니다.' };
         }
         this.setRelation(a, b, FactionRelation.NEUTRAL);
         return { success: true, message: '휴전이 성립되었습니다.' };

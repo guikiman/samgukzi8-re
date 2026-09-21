@@ -18,6 +18,8 @@ import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
 import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter } from './core/vengeance_system.js';
+import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
+import { EventFeedbackEffects } from './core/event_feedback_effects.js';
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
 // DOM References
@@ -68,6 +70,13 @@ let selectedHex = null;
 // ============================================================
 let battleFrontend;
 let isBattleMode = false;
+// 이벤트 연출 [191-200] — 흔들림 + 합성 사운드
+const feedbackEffects = new EventFeedbackEffects();
+let ctxRestorePending = false;
+/** 게임 이벤트에 맞는 연출 발화 */
+function fireFeedback(kind) {
+    feedbackEffects.fire(kind);
+}
 // ============================================================
 // Logging
 // ============================================================
@@ -153,6 +162,8 @@ function finishVengeanceModal(actorWon) {
     // 후처리: 우호도 + 명성 [C-인간관계][11]
     const outcome = finishVengeance(store, actorId, targetId, actorWon);
     addLog(outcome.message);
+    // 연출 [191-200] — 성패에 따른 흔들림 + 사운드
+    fireFeedback(actorWon ? 'VENGEANCE_SUCCESS' : 'VENGEANCE_FAIL');
     // 복수 성공 시 적군 사기 타격 (전투 유닛 반영)
     if (actorWon && outcome.targetMoraleHit > 0) {
         for (const eu of enemyUnits) {
@@ -672,12 +683,16 @@ function renderRecruitSection(city, isPlayerCity) {
     }
     section.style.display = 'block';
     const loyaltySystem = engine['loyaltySystem'];
+    const gsR = store.getGlobalState();
     targets.innerHTML = pool.map(o => {
-        const chance = Math.round(loyaltySystem.getRecruitChance(o.id) * 100);
+        // 평판 보정 반영 확률 [11] — 세력 군주 명성/악명 포함
+        const chance = Math.round(loyaltySystem.getRecruitChance(o.id, undefined, gsR.playerFactionId ?? undefined) * 100);
         const chanceColor = chance >= 60 ? 'var(--color-success, #4caf50)' : chance >= 30 ? '#e8c35a' : '#e05a5a';
+        const repMod = getReputationDiplomacyModifier(store, gsR.playerFactionId ?? null);
+        const repLabel = describeReputationModifier(repMod);
         return `<button class="cdp-expedition-btn cdp-recruit-btn" data-officer="${o.id}">
             <span class="exp-target-name">${o.name}</span>
-            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence} · <span style="color:${chanceColor};font-weight:bold">등용 확률 ${chance}%</span></span>
+            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence} · <span style="color:${chanceColor};font-weight:bold">등용 확률 ${chance}%</span>${repLabel ? ` <span style="font-size:10px;opacity:.75">(${repLabel})</span>` : ''}</span>
         </button>`;
     }).join('');
 }
@@ -874,6 +889,13 @@ window.addEventListener('resize', resizeCanvas);
 // ============================================================
 function renderFrame(_dt) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 이벤트 연출 흔들림 [191-200] — 감쇠 진동을 렌더에 오프셋으로 적용
+    if (feedbackEffects.isShaking()) {
+        const { x, y } = feedbackEffects.update(_dt);
+        ctx.save();
+        ctx.translate(x, y);
+        ctxRestorePending = true;
+    }
     if (!isRunning) {
         ctx.fillStyle = '#e94560';
         ctx.font = 'bold 36px "Malgun Gothic", sans-serif';
@@ -897,6 +919,11 @@ function renderFrame(_dt) {
             ctx.font = '13px "Malgun Gothic", sans-serif';
             ctx.fillText(`Phase: ${state}`, 12, 24);
         }
+    }
+    // 흔들림 중이었으면 컨텍스트 상태 복원
+    if (ctxRestorePending) {
+        ctx.restore();
+        ctxRestorePending = false;
     }
 }
 // ============================================================
@@ -1403,13 +1430,14 @@ function handleDiplomacyAction(action, targetFactionId) {
             break;
         }
         case 'alliance':
-            result = diplo.formAlliance(playerFactionId, targetFactionId);
+            // 평판 보정 [11]: 명성 높은 세력의 제안은 받아들여지기 쉬움
+            result = diplo.formAlliance(playerFactionId, targetFactionId, getReputationDiplomacyModifier(store, playerFactionId));
             break;
         case 'break':
             result = diplo.breakAlliance(playerFactionId, targetFactionId);
             break;
         case 'peace':
-            result = diplo.makePeace(playerFactionId, targetFactionId);
+            result = diplo.makePeace(playerFactionId, targetFactionId, getReputationDiplomacyModifier(store, playerFactionId));
             break;
         case 'war':
             result = diplo.declareWar(playerFactionId, targetFactionId);
@@ -1535,6 +1563,16 @@ function init() {
     engine.subscribe('CAPTIVE_ESCAPED', (event) => {
         addLog(`🏃 포로 탈출: ${event.payload.officerName}이(가) 수용소에서 탈출했습니다`);
     });
+    // 이벤트 연출 [191-200] — 흔들림 + 사운드
+    engine.subscribe('VENGEANCE_EVENT', (event) => {
+        fireFeedback(event.payload.success ? 'VENGEANCE_SUCCESS' : 'VENGEANCE_FAIL');
+    });
+    engine.subscribe('SWORN_BROTHER_RESCUED', () => {
+        fireFeedback('RESCUE');
+    });
+    engine.subscribe('FACTION_DESTROYED', () => {
+        fireFeedback('FACTION_DESTROYED');
+    });
     // 월간 복수 이벤트 [32][33][C-인간관계]
     engine.subscribe('VENGEANCE_EVENT', (event) => {
         addLog(`${event.payload.message}`);
@@ -1542,6 +1580,11 @@ function init() {
     // 의형제 구출 이벤트 [C-인간관계]
     engine.subscribe('SWORN_BROTHER_RESCUED', (event) => {
         addLog(`🤝 의형제 구출: ${event.payload.rescuerName}이(가) ${event.payload.officerName}을(를) 구했습니다`);
+    });
+    // 의형제 결의 이벤트 [C-인간관계][25]
+    engine.subscribe('SWORN_BROTHER_PACT', (event) => {
+        addLog(`${event.payload.message}`);
+        fireFeedback('RESCUE'); // 결의도 밝은 톤으로 연출
     });
     engine.subscribe('GAME_ENDING', (event) => {
         showEnding(event.payload.ending, event.payload.winner);

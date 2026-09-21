@@ -18,6 +18,7 @@ import { applyRecruitFailure, getRecruitAffinityModifier } from './recruit_relat
 import { applyCaptiveRecruitPenalty } from './captive_recruit_penalty_system.js';
 import type { DiplomacyEngine } from './diplomacy_engine.js';
 import { isCaptive } from './captive_escape_system.js';
+import { applyReputationToRecruitChance } from './reputation_effect_system.js';
 
 export interface RecruitmentResult {
     success: boolean;
@@ -55,7 +56,7 @@ export class OfficerLoyaltySystem {
      * @param officerId 등용 대상 무장 ID
      * @param recruiterId 초빙 실행 무장 ID (생략 시 기본 능력 60 가정)
      */
-    getRecruitChance(officerId: string, recruiterId?: string): number {
+    getRecruitChance(officerId: string, recruiterId?: string, targetFactionIdForChance?: string): number {
         const target = this.store.getOfficer(officerId);
         if (!target) return 0;
         const recruiter = recruiterId ? this.store.getOfficer(recruiterId) : null;
@@ -68,6 +69,8 @@ export class OfficerLoyaltySystem {
         if (recruiterId) {
             chance += getRecruitAffinityModifier(this.store, recruiterId, officerId); // 우호도 ±0.15
         }
+        // 평판 보정 [11]: 군주 명성/악명이 세력 이미지로 작용 (±0.10)
+        chance = applyReputationToRecruitChance(this.store, targetFactionIdForChance ?? null, chance);
         return Math.max(0.05, Math.min(0.95, chance));
     }
 
@@ -108,6 +111,8 @@ export class OfficerLoyaltySystem {
         if (recruiterId) {
             chance += getRecruitAffinityModifier(this.store, recruiterId, officerId); // 우호도 ±0.15
         }
+        // 평판 보정 [11]: 세력 군주의 명성/악명 (±0.10)
+        chance = applyReputationToRecruitChance(this.store, targetFactionId, chance);
         chance = Math.max(0.05, Math.min(0.95, chance));
 
         if (Math.random() > chance) {

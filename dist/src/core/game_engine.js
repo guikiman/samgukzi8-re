@@ -19,6 +19,7 @@ import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
 import { processMonthlySwornBrotherRescues } from './sworn_brother_rescue_system.js';
+import { processMonthlySwornBrotherPacts } from './sworn_brother_pact_system.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -288,6 +289,18 @@ export class GameEngine {
                     id: `vengeance_${v.actorId}_${Date.now()}`,
                     type: 'VENGEANCE_EVENT',
                     payload: { kind: v.kind, actorId: v.actorId, targetId: v.targetId, success: v.success, message: v.message },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            // 월간 의형제 결의 — 깊은 우호도 무장 간 결의 [C-인간관계][25]
+            const pactReport = processMonthlySwornBrotherPacts(this.store);
+            for (const pact of pactReport.pacts) {
+                console.log(`[Engine] ${pact.message}`);
+                this.emitEvent({
+                    id: `sworn_pact_${pact.officerAId}_${pact.officerBId}_${Date.now()}`,
+                    type: 'SWORN_BROTHER_PACT',
+                    payload: { officerAName: pact.officerAName, officerBName: pact.officerBName, factionId: pact.factionId, message: pact.message },
                     timestamp: Date.now(),
                     turn: this.store.getGlobalState().turnCount,
                 });

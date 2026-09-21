@@ -28,10 +28,11 @@ export declare class DiplomacyEngine {
         gold: number;
     }): void;
     /**
-     * 동맹 제안
-     * 전쟁 중인 세력과는 불가
+     * 동맹 제안 [341-360][11]
+     * 전쟁 중인 세력과는 불가. 평판 보정: 제안자의 명성이 높으면 상대가 받아들이기 쉽고,
+     * 악명이 높으면 경계해 거절 확률 상승. reputationModifier는 스토어 연동 시 주입.
      */
-    formAlliance(a: FactionID, b: FactionID): DiplomacyResult;
+    formAlliance(a: FactionID, b: FactionID, reputationModifier?: number): DiplomacyResult;
     /**
      * 동맹 파기
      */
@@ -73,9 +74,10 @@ export declare class DiplomacyEngine {
      */
     exchangeHostages(a: FactionID, b: FactionID): boolean;
     /**
-     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교]
+     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교][11]
+     * 평판 보정: 악명 높은 제안자는 거절당할 수 있음 (보정 0이면 기존 동작)
      */
-    makePeace(a: FactionID, b: FactionID): DiplomacyResult;
+    makePeace(a: FactionID, b: FactionID, reputationModifier?: number): DiplomacyResult;
     /**
      * 대리 전쟁 선포
      */

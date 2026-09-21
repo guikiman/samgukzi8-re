@@ -35,7 +35,7 @@ export declare class OfficerLoyaltySystem {
      * @param officerId 등용 대상 무장 ID
      * @param recruiterId 초빙 실행 무장 ID (생략 시 기본 능력 60 가정)
      */
-    getRecruitChance(officerId: string, recruiterId?: string): number;
+    getRecruitChance(officerId: string, recruiterId?: string, targetFactionIdForChance?: string): number;
     /**
      * 무장 등용 시도
      * @param officerId 등용할 무장 ID
