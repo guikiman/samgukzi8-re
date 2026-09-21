@@ -19,7 +19,8 @@ export class DiplomacyEngine {
         this.factionData = new Map();
     }
     key(a, b) {
-        return [a, b].sort().join('_');
+        // 구분자 '|' — 세력 ID 자체에 '_'가 포함되므로 split 안전성 확보
+        return [a, b].sort().join('|');
     }
     getRelation(a, b) {
         return this.relations.get(this.key(a, b)) ?? FactionRelation.NEUTRAL;
@@ -145,6 +146,16 @@ export class DiplomacyEngine {
         return false;
     }
     /**
+     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교]
+     */
+    makePeace(a, b) {
+        if (this.getRelation(a, b) !== FactionRelation.WAR) {
+            return { success: false, message: '전쟁 중이 아닙니다.' };
+        }
+        this.setRelation(a, b, FactionRelation.NEUTRAL);
+        return { success: true, message: '휴전이 성립되었습니다.' };
+    }
+    /**
      * 대리 전쟁 선포
      */
     declareProxyWar(sponsor, target, proxy) {
@@ -172,6 +183,29 @@ export class DiplomacyEngine {
      */
     spreadRumor(targetFaction) {
         return { success: true, message: `${targetFaction}에 소문을 퍼뜨렸습니다.` };
+    }
+    /**
+     * 세이브/로드 지원 [212]: 관계 상태 직렬화
+     */
+    serialize() {
+        const out = [];
+        for (const [key, rel] of this.relations) {
+            const [a, b] = key.split('|');
+            out.push({ a, b, relation: rel });
+        }
+        return out;
+    }
+    /**
+     * 세이브/로드 지원 [212]: 관계 상태 복원
+     */
+    restore(data) {
+        this.relations.clear();
+        for (const entry of data) {
+            const rel = entry.relation;
+            if (Object.values(FactionRelation).includes(rel)) {
+                this.setRelation(entry.a, entry.b, rel);
+            }
+        }
     }
 }
 //# sourceMappingURL=diplomacy_engine.js.map

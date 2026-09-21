@@ -8,6 +8,7 @@
  */
 import { GamePhase, PhaseTransition, GlobalState, NormalizedState, Officer, Faction, City, Army, ICommand, CommandResult, SerializedCommand, SchedulerProgress, GameEvent, EventListener, AIWorkerPayload, AIWorkerResult } from './types.js';
 import { GameStore } from './game_store.js';
+import { DiplomacyEngine } from './diplomacy_engine.js';
 export declare class GameEngine {
     private store;
     private commandQueue;
@@ -25,6 +26,8 @@ export declare class GameEngine {
     private factionAI;
     private fateSystem;
     private loyaltySystem;
+    private diplomacy;
+    private diplomacyAI;
     private isProcessingTurn;
     constructor(store?: GameStore);
     private initBootstrap;
@@ -59,10 +62,17 @@ export declare class GameEngine {
     requestAIWorker(payload: AIWorkerPayload): Promise<AIWorkerResult>;
     private localAIProcessing;
     terminateWorker(): void;
+    /** 외교 엔진 접근자 (UI/AI 용) [70-73] */
+    get diplomacyEngine(): DiplomacyEngine;
     save(): {
         state: NormalizedState;
         globalState: GlobalState;
         commands: SerializedCommand[];
+        diplomacy: Array<{
+            a: string;
+            b: string;
+            relation: string;
+        }>;
     };
     saveCompressed(): string;
     loadCompressed(compressed: string): boolean;
@@ -70,6 +80,11 @@ export declare class GameEngine {
         state: NormalizedState;
         globalState: GlobalState;
         commands: SerializedCommand[];
+        diplomacy?: Array<{
+            a: string;
+            b: string;
+            relation: string;
+        }>;
     }): void;
     initWorld(officers: Officer[], factions: Faction[], cities: City[], armies: Army[]): void;
     private delay;

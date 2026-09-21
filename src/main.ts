@@ -17,6 +17,9 @@ import { MonthlyReportSystem } from './core/monthly_report.js';
 import { assembleReinforcements } from './core/reinforcement_system.js';
 import { SaveSlotManager } from './core/save_slot_manager.js';
 import type { SlotId } from './core/save_slot_manager.js';
+import { FactionRelation } from './core/diplomacy_engine.js';
+import type { DiplomacyEngine } from './core/diplomacy_engine.js';
+import { processBattleSpoils } from './core/battle_spoils_system.js';
 
 // ============================================================
 // DOM References
@@ -38,6 +41,8 @@ const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
 const btnSlots = document.getElementById('btn-slots') as HTMLButtonElement;
 const btnBattle = document.getElementById('btn-battle') as HTMLButtonElement;
 const btnReport = document.getElementById('btn-report') as HTMLButtonElement;
+const btnDiplomacy = document.getElementById('btn-diplomacy') as HTMLButtonElement;
+const btnNextMonth = document.getElementById('btn-next-month') as HTMLButtonElement;
 
 // ============================================================
 // Engine State
@@ -453,11 +458,15 @@ function renderRecruitSection(city: import('./core/types.js').City, isPlayerCity
     }
 
     section.style.display = 'block';
-    targets.innerHTML = pool.map(o =>
-        `<button class="cdp-expedition-btn cdp-recruit-btn" data-officer="${o.id}">
+    const loyaltySystem = engine['loyaltySystem'];
+    targets.innerHTML = pool.map(o => {
+        const chance = Math.round(loyaltySystem.getRecruitChance(o.id) * 100);
+        const chanceColor = chance >= 60 ? 'var(--color-success, #4caf50)' : chance >= 30 ? '#e8c35a' : '#e05a5a';
+        return `<button class="cdp-expedition-btn cdp-recruit-btn" data-officer="${o.id}">
             <span class="exp-target-name">${o.name}</span>
-            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence}</span>
-        </button>`).join('');
+            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence} · <span style="color:${chanceColor};font-weight:bold">등용 확률 ${chance}%</span></span>
+        </button>`;
+    }).join('');
 }
 
 // 등용 버튼 클릭
@@ -500,6 +509,14 @@ function resolveExpeditionOutcome(playerWon: boolean): void {
         });
         store.updateCity(source.id, { development: Math.max(0, source.development - garrisonTransfer) });
         addLog(`🏳️ ${target.name} 점령! 영토가 확장되었습니다`);
+        // 전투 후처리: 포로 포획 + 병력/자금/국고 약탈 [131-145]
+        const spoils = processBattleSpoils(store, source.id, target.id);
+        for (const msg of spoils.messages) {
+            addLog(msg);
+        }
+        if (spoils.capturedOfficerIds.length > 0) {
+            addLog(`⛓️ 포로 ${spoils.capturedOfficerIds.length}명 — 도시 패널에서 등용할 수 있습니다`);
+        }
     } else {
         store.updateCity(source.id, { development: Math.max(0, Math.floor(source.development * 0.8)) });
         addLog(`⚔️ ${target.name} 공성 실패 — 병력이 20% 감소했습니다`);
@@ -731,6 +748,8 @@ async function startGame(world: BuiltWorld | null = null): Promise<void> {
     btnSlots.disabled = false;
     btnReport.disabled = false;
     btnBattle.disabled = false;
+    btnDiplomacy.disabled = false;
+    btnNextMonth.disabled = false;
     statusText.textContent = '게임 실행 중';
     lastFrameTime = 0;
 
@@ -1073,8 +1092,153 @@ saveSlotList.addEventListener('click', (e) => {
     if (slotEl) saveToSlot(slotEl.dataset.slot as SlotId);
 });
 
+// ============================================================
+// 外交 패널 [341-360] — 세력 관계도 + 수동 외교 제안
+// ============================================================
+
+const diplomacyPanel = document.getElementById('diplomacy-panel')!;
+const dpFactionList = document.getElementById('dp-faction-list')!;
+const dpTreasury = document.getElementById('dp-treasury')!;
+
+const RELATION_LABEL: Record<string, { label: string; cls: string }> = {
+    alliance: { label: '동맹', cls: 'dp-relation-alliance' },
+    war: { label: '전쟁', cls: 'dp-relation-war' },
+    neutral: { label: '중립', cls: 'dp-relation-neutral' },
+    surrendered: { label: '종속', cls: 'dp-relation-surrendered' },
+};
+
+/** 외교 패널 렌더링 — 플레이어 관점의 관계도 + 액션 버튼 */
+function renderDiplomacyPanel(): void {
+    if (!engine) return;
+    const store = engine['store'];
+    const gs = store.getGlobalState();
+    const playerFactionId = gs.playerFactionId;
+    const player = playerFactionId ? store.getFaction(playerFactionId) : null;
+    if (!player) return;
+
+    dpTreasury.textContent = `國庫 — ${player.gold.toLocaleString()} 金`; 
+    const diplo: DiplomacyEngine = engine.diplomacyEngine;
+    const others = store.getAllFactions().filter(f => f.id !== playerFactionId);
+
+    dpFactionList.innerHTML = others.map(f => {
+        const rel = diplo.getRelation(playerFactionId!, f.id);
+        const relInfo = RELATION_LABEL[rel] ?? RELATION_LABEL.neutral;
+        const canPeace = rel === FactionRelation.WAR;
+        const canAlly = rel === FactionRelation.NEUTRAL;
+        const canBreak = rel === FactionRelation.ALLIANCE;
+        const canGift = rel !== FactionRelation.WAR;
+        const canDeclare = rel !== FactionRelation.WAR;
+        return `<div class="dp-faction-row" style="--faction-color:${f.color}">
+            <div class="dp-faction-head">
+                <span class="dp-faction-name">${f.name}</span>
+                <span class="dp-relation-tag ${relInfo.cls}">${relInfo.label}</span>
+            </div>
+            <div class="dp-actions">
+                ${canGift ? `<button class="dp-btn" data-act="gift" data-target="${f.id}">증정 (300金)</button>` : ''}
+                ${canAlly ? `<button class="dp-btn" data-act="alliance" data-target="${f.id}">동맹 제안</button>` : ''}
+                ${canBreak ? `<button class="dp-btn" data-act="break" data-target="${f.id}">동맹 파기</button>` : ''}
+                ${canPeace ? `<button class="dp-btn" data-act="peace" data-target="${f.id}">휴전 제파</button>` : ''}
+                ${canDeclare ? `<button class="dp-btn war" data-act="war" data-target="${f.id}">선전포고</button>` : ''}
+            </div>
+            <div class="dp-result" id="dp-result-${f.id}"></div>
+        </div>`;
+    }).join('') || '<div class="ss-slot-empty">외교 가능한 타세력이 없습니다.</div>';
+}
+
+/** 수동 외교 액션 처리 — 결과를 패널과 로그에 반영 */
+function handleDiplomacyAction(action: string, targetFactionId: string): void {
+    if (!engine) return;
+    const store = engine['store'];
+    const gs = store.getGlobalState();
+    const playerFactionId = gs.playerFactionId;
+    if (!playerFactionId) return;
+    const diplo: DiplomacyEngine = engine.diplomacyEngine;
+    const target = store.getFaction(targetFactionId);
+    if (!target) return;
+
+    let result: { success: boolean; message: string };
+    switch (action) {
+        case 'gift': {
+            const player = store.getFaction(playerFactionId)!;
+            if (player.gold < 300) {
+                result = { success: false, message: '국고가 부족합니다 (300金 필요).' };
+                break;
+            }
+            result = diplo.sendGift(playerFactionId, targetFactionId, 300, 0);
+            if (result.success) {
+                store.updateFaction(playerFactionId, { gold: player.gold - 300 });
+                store.updateFaction(targetFactionId, { gold: target.gold + 300 });
+            }
+            break;
+        }
+        case 'alliance':
+            result = diplo.formAlliance(playerFactionId, targetFactionId);
+            break;
+        case 'break':
+            result = diplo.breakAlliance(playerFactionId, targetFactionId);
+            break;
+        case 'peace':
+            result = diplo.makePeace(playerFactionId, targetFactionId);
+            break;
+        case 'war':
+            result = diplo.declareWar(playerFactionId, targetFactionId);
+            break;
+        default:
+            return;
+    }
+
+    addLog(`${result.success ? '🕊️' : '❌'} [외교] ${target.name}: ${result.message}`);
+    renderDiplomacyPanel();
+}
+
+btnDiplomacy.addEventListener('click', () => {
+    renderDiplomacyPanel();
+    diplomacyPanel.style.display = diplomacyPanel.style.display === 'none' || !diplomacyPanel.style.display ? 'block' : 'none';
+});
+document.getElementById('dp-close')!.addEventListener('click', () => {
+    diplomacyPanel.style.display = 'none';
+});
+dpFactionList.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.dp-btn') as HTMLElement | null;
+    if (!btn) return;
+    handleDiplomacyAction(btn.dataset.act!, btn.dataset.target!);
+});
+
 btnSave.addEventListener('click', () => {
     saveToSlot(1);
+});
+
+// ============================================================
+// 턴 진행 — '다음 月' 버튼 [201]
+// ============================================================
+
+let isAdvancingTurn = false;
+btnNextMonth.addEventListener('click', async () => {
+    if (!engine || isAdvancingTurn || !isRunning) return;
+    isAdvancingTurn = true;
+    btnNextMonth.disabled = true;
+    btnNextMonth.textContent = '⏳ 진행 중...';
+    try {
+        await engine.executeTurn();
+        const gs = engine['store'].getGlobalState();
+        addLog(`📅 ${gs.time.year}년 ${gs.time.month}월 — 턴 ${gs.turnCount}`);
+        // 지도(소속/영토) + 열려 있는 패널 갱신
+        syncChinaMapCities();
+        if (currentPanelCityId) {
+            const store = engine['store'];
+            const city = store.getCity(currentPanelCityId);
+            if (city) {
+                renderCityDetailPanel(city, city.ownerId ? store.getFaction(city.ownerId) : null, false);
+            }
+        }
+        if (diplomacyPanel.style.display === 'block') renderDiplomacyPanel();
+    } catch (err) {
+        addLog(`턴 진행 실패: ${err}`);
+    } finally {
+        isAdvancingTurn = false;
+        btnNextMonth.disabled = false;
+        btnNextMonth.textContent = '▸ 다음 月';
+    }
 });
 
 // ============================================================

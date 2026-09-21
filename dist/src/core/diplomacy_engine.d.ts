@@ -73,6 +73,10 @@ export declare class DiplomacyEngine {
      */
     exchangeHostages(a: FactionID, b: FactionID): boolean;
     /**
+     * 휴전 (전쟁 → 중립) [341-360: 지정학 외교]
+     */
+    makePeace(a: FactionID, b: FactionID): DiplomacyResult;
+    /**
      * 대리 전쟁 선포
      */
     declareProxyWar(sponsor: FactionID, target: FactionID, proxy: FactionID): boolean;
@@ -88,5 +92,21 @@ export declare class DiplomacyEngine {
      * 소문 퍼뜨리기 (이간질)
      */
     spreadRumor(targetFaction: FactionID): DiplomacyResult;
+    /**
+     * 세이브/로드 지원 [212]: 관계 상태 직렬화
+     */
+    serialize(): Array<{
+        a: string;
+        b: string;
+        relation: string;
+    }>;
+    /**
+     * 세이브/로드 지원 [212]: 관계 상태 복원
+     */
+    restore(data: Array<{
+        a: string;
+        b: string;
+        relation: string;
+    }>): void;
 }
 //# sourceMappingURL=diplomacy_engine.d.ts.map

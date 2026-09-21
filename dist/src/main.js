@@ -13,6 +13,9 @@ import { TitleScreen } from './core/title_screen.js';
 import { loadScenarios, getCachedScenarios, buildWorld, getKnownOfficerName } from './core/scenario_system.js';
 import { MonthlyReportSystem } from './core/monthly_report.js';
 import { assembleReinforcements } from './core/reinforcement_system.js';
+import { SaveSlotManager } from './core/save_slot_manager.js';
+import { FactionRelation } from './core/diplomacy_engine.js';
+import { processBattleSpoils } from './core/battle_spoils_system.js';
 // ============================================================
 // DOM References
 // ============================================================
@@ -29,8 +32,11 @@ const factionDetail = document.getElementById('faction-detail');
 const btnStart = document.getElementById('btn-start');
 const btnPause = document.getElementById('btn-pause');
 const btnSave = document.getElementById('btn-save');
+const btnSlots = document.getElementById('btn-slots');
 const btnBattle = document.getElementById('btn-battle');
 const btnReport = document.getElementById('btn-report');
+const btnDiplomacy = document.getElementById('btn-diplomacy');
+const btnNextMonth = document.getElementById('btn-next-month');
 // ============================================================
 // Engine State
 // ============================================================
@@ -429,10 +435,15 @@ function renderRecruitSection(city, isPlayerCity) {
         return;
     }
     section.style.display = 'block';
-    targets.innerHTML = pool.map(o => `<button class="cdp-expedition-btn cdp-recruit-btn" data-officer="${o.id}">
+    const loyaltySystem = engine['loyaltySystem'];
+    targets.innerHTML = pool.map(o => {
+        const chance = Math.round(loyaltySystem.getRecruitChance(o.id) * 100);
+        const chanceColor = chance >= 60 ? 'var(--color-success, #4caf50)' : chance >= 30 ? '#e8c35a' : '#e05a5a';
+        return `<button class="cdp-expedition-btn cdp-recruit-btn" data-officer="${o.id}">
             <span class="exp-target-name">${o.name}</span>
-            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence}</span>
-        </button>`).join('');
+            <span class="exp-target-info">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence} · <span style="color:${chanceColor};font-weight:bold">등용 확률 ${chance}%</span></span>
+        </button>`;
+    }).join('');
 }
 // 등용 버튼 클릭
 document.getElementById('cdp-recruit-targets').addEventListener('click', (e) => {
@@ -477,6 +488,14 @@ function resolveExpeditionOutcome(playerWon) {
         });
         store.updateCity(source.id, { development: Math.max(0, source.development - garrisonTransfer) });
         addLog(`🏳️ ${target.name} 점령! 영토가 확장되었습니다`);
+        // 전투 후처리: 포로 포획 + 병력/자금/국고 약탈 [131-145]
+        const spoils = processBattleSpoils(store, source.id, target.id);
+        for (const msg of spoils.messages) {
+            addLog(msg);
+        }
+        if (spoils.capturedOfficerIds.length > 0) {
+            addLog(`⛓️ 포로 ${spoils.capturedOfficerIds.length}명 — 도시 패널에서 등용할 수 있습니다`);
+        }
     }
     else {
         store.updateCity(source.id, { development: Math.max(0, Math.floor(source.development * 0.8)) });
@@ -700,8 +719,11 @@ async function startGame(world = null) {
     btnStart.disabled = true;
     btnPause.disabled = false;
     btnSave.disabled = false;
+    btnSlots.disabled = false;
     btnReport.disabled = false;
     btnBattle.disabled = false;
+    btnDiplomacy.disabled = false;
+    btnNextMonth.disabled = false;
     statusText.textContent = '게임 실행 중';
     lastFrameTime = 0;
     addLog('게임 루프 시작');
@@ -935,14 +957,240 @@ btnBattle.addEventListener('click', () => {
 btnReport.addEventListener('click', () => {
     showMonthlyReport();
 });
-btnSave.addEventListener('click', () => {
+// ============================================================
+// 세이브 슬롯 관리 [17][212] — 수동 3슬롯 + 자동 저장 1슬롯
+// ============================================================
+const slotManager = new SaveSlotManager();
+const saveSlotsPanel = document.getElementById('save-slots-panel');
+const saveSlotList = document.getElementById('ss-slot-list');
+/** 현재 상태를 지정 슬롯에 저장 */
+function saveToSlot(slot) {
+    if (!engine)
+        return;
     try {
         const compressed = engine.saveCompressed();
-        localStorage.setItem('sik_re_save', compressed);
-        addLog('게임 저장 완료');
+        const gs = engine['store'].getGlobalState();
+        const faction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
+        const ok = slotManager.save(slot, compressed, {
+            year: gs.time.year,
+            month: gs.time.month,
+            turnCount: gs.turnCount,
+            factionName: faction?.name ?? '-',
+        });
+        addLog(ok
+            ? `${slot === 'auto' ? '자동' : `슬롯 ${slot}`} 저장 완료 (${gs.time.year}년 ${gs.time.month}월)`
+            : '저장 실패: 저장 공간 부족');
+        if (ok)
+            renderSaveSlots();
     }
     catch (err) {
         addLog(`저장 실패: ${err}`);
+    }
+}
+/** 지정 슬롯에서 불러와 게임 재시작 */
+function loadFromSlot(slot) {
+    const data = slotManager.load(slot);
+    if (!data) {
+        addLog(`슬롯 ${slot}이(가) 비어 있습니다.`);
+        return;
+    }
+    const ok = engine.loadCompressed(data);
+    if (!ok) {
+        addLog('불러오기 실패: 세이브 데이터가 손상되었습니다.');
+        return;
+    }
+    saveSlotsPanel.style.display = 'none';
+    addLog(`슬롯 ${slot === 'auto' ? '자동' : slot}에서 불러왔습니다`);
+    void startGame(null);
+}
+const SLOT_DEFS = [
+    { id: 1, label: '슬롯 一' },
+    { id: 2, label: '슬롯 二' },
+    { id: 3, label: '슬롯 三' },
+    { id: 'auto', label: '自動' },
+];
+/** 슬롯 목록 렌더링 — 메타데이터 미리보기 포함 */
+function renderSaveSlots() {
+    saveSlotList.innerHTML = SLOT_DEFS.map(({ id, label }) => {
+        const meta = slotManager.getMeta(id);
+        const name = label + (id === 'auto' ? ' (매월 자동)' : '');
+        if (!meta) {
+            return `<div class="ss-slot" data-slot="${id}">
+                <div class="ss-slot-head"><span class="ss-slot-name">${name}</span><span class="ss-slot-tag">빈 슬롯</span></div>
+                <div class="ss-slot-empty">클릭하여 현재 상태를 저장</div>
+            </div>`;
+        }
+        const saved = new Date(meta.savedAt);
+        const time = `${saved.getMonth() + 1}/${saved.getDate()} ${String(saved.getHours()).padStart(2, '0')}:${String(saved.getMinutes()).padStart(2, '0')}`;
+        return `<div class="ss-slot" data-slot="${id}">
+            <div class="ss-slot-head"><span class="ss-slot-name">${name}</span><span class="ss-slot-tag">${time}</span></div>
+            <div class="ss-slot-info">${meta.factionName} · ${meta.year}년 ${meta.month}월 · 턴 ${meta.turnCount}</div>
+            <div class="ss-slot-actions"><button class="ss-load-btn" data-load="${id}">불러오기</button></div>
+        </div>`;
+    }).join('');
+}
+btnSlots.addEventListener('click', () => {
+    renderSaveSlots();
+    saveSlotsPanel.style.display = saveSlotsPanel.style.display === 'none' || !saveSlotsPanel.style.display ? 'block' : 'none';
+});
+document.getElementById('ss-close').addEventListener('click', () => {
+    saveSlotsPanel.style.display = 'none';
+});
+saveSlotList.addEventListener('click', (e) => {
+    const loadBtn = e.target.closest('.ss-load-btn');
+    if (loadBtn) {
+        e.stopPropagation();
+        loadFromSlot(loadBtn.dataset.load);
+        return;
+    }
+    const slotEl = e.target.closest('.ss-slot');
+    if (slotEl)
+        saveToSlot(slotEl.dataset.slot);
+});
+// ============================================================
+// 外交 패널 [341-360] — 세력 관계도 + 수동 외교 제안
+// ============================================================
+const diplomacyPanel = document.getElementById('diplomacy-panel');
+const dpFactionList = document.getElementById('dp-faction-list');
+const dpTreasury = document.getElementById('dp-treasury');
+const RELATION_LABEL = {
+    alliance: { label: '동맹', cls: 'dp-relation-alliance' },
+    war: { label: '전쟁', cls: 'dp-relation-war' },
+    neutral: { label: '중립', cls: 'dp-relation-neutral' },
+    surrendered: { label: '종속', cls: 'dp-relation-surrendered' },
+};
+/** 외교 패널 렌더링 — 플레이어 관점의 관계도 + 액션 버튼 */
+function renderDiplomacyPanel() {
+    if (!engine)
+        return;
+    const store = engine['store'];
+    const gs = store.getGlobalState();
+    const playerFactionId = gs.playerFactionId;
+    const player = playerFactionId ? store.getFaction(playerFactionId) : null;
+    if (!player)
+        return;
+    dpTreasury.textContent = `國庫 — ${player.gold.toLocaleString()} 金`;
+    const diplo = engine.diplomacyEngine;
+    const others = store.getAllFactions().filter(f => f.id !== playerFactionId);
+    dpFactionList.innerHTML = others.map(f => {
+        const rel = diplo.getRelation(playerFactionId, f.id);
+        const relInfo = RELATION_LABEL[rel] ?? RELATION_LABEL.neutral;
+        const canPeace = rel === FactionRelation.WAR;
+        const canAlly = rel === FactionRelation.NEUTRAL;
+        const canBreak = rel === FactionRelation.ALLIANCE;
+        const canGift = rel !== FactionRelation.WAR;
+        const canDeclare = rel !== FactionRelation.WAR;
+        return `<div class="dp-faction-row" style="--faction-color:${f.color}">
+            <div class="dp-faction-head">
+                <span class="dp-faction-name">${f.name}</span>
+                <span class="dp-relation-tag ${relInfo.cls}">${relInfo.label}</span>
+            </div>
+            <div class="dp-actions">
+                ${canGift ? `<button class="dp-btn" data-act="gift" data-target="${f.id}">증정 (300金)</button>` : ''}
+                ${canAlly ? `<button class="dp-btn" data-act="alliance" data-target="${f.id}">동맹 제안</button>` : ''}
+                ${canBreak ? `<button class="dp-btn" data-act="break" data-target="${f.id}">동맹 파기</button>` : ''}
+                ${canPeace ? `<button class="dp-btn" data-act="peace" data-target="${f.id}">휴전 제파</button>` : ''}
+                ${canDeclare ? `<button class="dp-btn war" data-act="war" data-target="${f.id}">선전포고</button>` : ''}
+            </div>
+            <div class="dp-result" id="dp-result-${f.id}"></div>
+        </div>`;
+    }).join('') || '<div class="ss-slot-empty">외교 가능한 타세력이 없습니다.</div>';
+}
+/** 수동 외교 액션 처리 — 결과를 패널과 로그에 반영 */
+function handleDiplomacyAction(action, targetFactionId) {
+    if (!engine)
+        return;
+    const store = engine['store'];
+    const gs = store.getGlobalState();
+    const playerFactionId = gs.playerFactionId;
+    if (!playerFactionId)
+        return;
+    const diplo = engine.diplomacyEngine;
+    const target = store.getFaction(targetFactionId);
+    if (!target)
+        return;
+    let result;
+    switch (action) {
+        case 'gift': {
+            const player = store.getFaction(playerFactionId);
+            if (player.gold < 300) {
+                result = { success: false, message: '국고가 부족합니다 (300金 필요).' };
+                break;
+            }
+            result = diplo.sendGift(playerFactionId, targetFactionId, 300, 0);
+            if (result.success) {
+                store.updateFaction(playerFactionId, { gold: player.gold - 300 });
+                store.updateFaction(targetFactionId, { gold: target.gold + 300 });
+            }
+            break;
+        }
+        case 'alliance':
+            result = diplo.formAlliance(playerFactionId, targetFactionId);
+            break;
+        case 'break':
+            result = diplo.breakAlliance(playerFactionId, targetFactionId);
+            break;
+        case 'peace':
+            result = diplo.makePeace(playerFactionId, targetFactionId);
+            break;
+        case 'war':
+            result = diplo.declareWar(playerFactionId, targetFactionId);
+            break;
+        default:
+            return;
+    }
+    addLog(`${result.success ? '🕊️' : '❌'} [외교] ${target.name}: ${result.message}`);
+    renderDiplomacyPanel();
+}
+btnDiplomacy.addEventListener('click', () => {
+    renderDiplomacyPanel();
+    diplomacyPanel.style.display = diplomacyPanel.style.display === 'none' || !diplomacyPanel.style.display ? 'block' : 'none';
+});
+document.getElementById('dp-close').addEventListener('click', () => {
+    diplomacyPanel.style.display = 'none';
+});
+dpFactionList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.dp-btn');
+    if (!btn)
+        return;
+    handleDiplomacyAction(btn.dataset.act, btn.dataset.target);
+});
+btnSave.addEventListener('click', () => {
+    saveToSlot(1);
+});
+// ============================================================
+// 턴 진행 — '다음 月' 버튼 [201]
+// ============================================================
+let isAdvancingTurn = false;
+btnNextMonth.addEventListener('click', async () => {
+    if (!engine || isAdvancingTurn || !isRunning)
+        return;
+    isAdvancingTurn = true;
+    btnNextMonth.disabled = true;
+    btnNextMonth.textContent = '⏳ 진행 중...';
+    try {
+        await engine.executeTurn();
+        const gs = engine['store'].getGlobalState();
+        addLog(`📅 ${gs.time.year}년 ${gs.time.month}월 — 턴 ${gs.turnCount}`);
+        // 지도(소속/영토) + 열려 있는 패널 갱신
+        syncChinaMapCities();
+        if (currentPanelCityId) {
+            const store = engine['store'];
+            const city = store.getCity(currentPanelCityId);
+            if (city) {
+                renderCityDetailPanel(city, city.ownerId ? store.getFaction(city.ownerId) : null, false);
+            }
+        }
+        if (diplomacyPanel.style.display === 'block')
+            renderDiplomacyPanel();
+    }
+    catch (err) {
+        addLog(`턴 진행 실패: ${err}`);
+    }
+    finally {
+        isAdvancingTurn = false;
+        btnNextMonth.disabled = false;
+        btnNextMonth.textContent = '▸ 다음 月';
     }
 });
 // ============================================================
@@ -962,6 +1210,29 @@ function init() {
     // Subscribe to engine events
     engine.subscribe('PHASE_CHANGE', (event) => {
         addLog(`페이즈 전환: ${event.payload.from} → ${event.payload.to}`);
+    });
+    // AI 세력 월간 외교 이벤트 [341-360]
+    engine.subscribe('FACTION_DIPLOMACY', (event) => {
+        addLog(`🕊️ [외교] ${event.payload.factionName}: ${event.payload.message}`);
+    });
+    // AI 세력 월간 행동 후 자동 저장 (auto 슬롯) [212]
+    engine.subscribe('FACTION_AI_ACTION', () => {
+        if (!engine)
+            return;
+        try {
+            const compressed = engine.saveCompressed();
+            const gs = engine['store'].getGlobalState();
+            const faction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
+            slotManager.save('auto', compressed, {
+                year: gs.time.year,
+                month: gs.time.month,
+                turnCount: gs.turnCount,
+                factionName: faction?.name ?? '-',
+            });
+        }
+        catch {
+            // 자동 저장 실패는 무음 처리 (게임 진행 방해하지 않음)
+        }
     });
     engine.subscribe('OFFICER_DEATH', (event) => {
         addLog(`⚔️ ${event.payload.officerName} 사망 (${event.payload.cause})`);
@@ -1045,25 +1316,29 @@ function monthToSeason(month) {
         return 'summer';
     return 'autumn';
 }
-// Load save if exists
-const savedData = localStorage.getItem('sik_re_save');
-if (savedData) {
+// Load save if exists — 슬롯 매니저 기반 (구버전 단일 키 폴백 포함) [17]
+const titleSlotManager = new SaveSlotManager();
+const hasAnySave = titleSlotManager.hasAnySave();
+if (hasAnySave) {
     addLog('이전 저장 데이터 발견');
 }
 const titleScreen = new TitleScreen({
     onNewGame: () => { openScenarioScreen(); },
     onContinue: () => {
         try {
-            const saved = localStorage.getItem('sik_re_save');
-            if (!saved)
+            // 최근 저장 슬롯(auto 폴백 포함)을 찾아 복원
+            const metas = titleSlotManager.getAllMetas();
+            const latest = metas.sort((a, b) => b.savedAt - a.savedAt)[0];
+            const data = latest ? titleSlotManager.load(latest.slot) : titleSlotManager.load('auto');
+            if (!data)
                 return;
-            const ok = engine.loadCompressed(saved);
+            const ok = engine.loadCompressed(data);
             if (!ok) {
                 addLog('불러오기 실패: 세이브 데이터가 손상되었습니다. 새로운 시작을 이용하세요.');
                 statusText.textContent = '불러오기 실패';
                 return;
             }
-            addLog('세이브 불러오기 완료');
+            addLog(latest ? `슬롯 ${latest.slot === 'auto' ? '자동' : latest.slot}에서 불러오기 완료` : '세이브 불러오기 완료');
             void startGame(null);
         }
         catch (err) {
@@ -1071,7 +1346,7 @@ const titleScreen = new TitleScreen({
         }
     },
 });
-titleScreen.setHasSave(!!savedData);
+titleScreen.setHasSave(hasAnySave);
 titleScreen.show();
 init();
 // ============================================================
@@ -1151,5 +1426,35 @@ document.getElementById('btn-faction-back').addEventListener('click', () => {
     factionScreen.style.display = 'none';
     scenarioScreen.style.display = 'flex';
 });
-window.__game = { getChinaMap: () => chinaMap, getWorldCities: () => worldCities, getEngine: () => engine };
+window.__game = {
+    getChinaMap: () => chinaMap,
+    getWorldCities: () => worldCities,
+    getEngine: () => engine,
+    getStore: () => engine?.['store'] ?? null,
+    /** E2E 테스트용: 시나리오 지정 시작 (예: startScenario('05', 2)) */
+    startScenario: (id, factionIndex) => {
+        void loadScenarios().then(() => {
+            const loaded = getCachedScenarios().find(s => s.id === id);
+            if (!loaded)
+                return false;
+            const world = buildWorld(loaded, factionIndex);
+            void startGame(world);
+            return true;
+        });
+        return true;
+    },
+    /** E2E 테스트용: 세이브 수행 */
+    saveGame: () => {
+        if (!engine)
+            return false;
+        const compressed = engine.saveCompressed();
+        try {
+            localStorage.setItem('sik_re_save', compressed);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    },
+};
 //# sourceMappingURL=main.js.map

@@ -20,8 +20,10 @@
             <button id="btn-pause" class="game-btn" disabled>일시정지</button>
             <button id="btn-save" class="game-btn" disabled>저장</button>
             <button id="btn-slots" class="game-btn" disabled>💾 슬롯</button>
+            <button id="btn-diplomacy" class="game-btn" disabled>🕊️ 외교</button>
             <button id="btn-report" class="game-btn" disabled>📊 보고</button>
             <button id="btn-battle" class="game-btn" disabled>⚔️ 전투</button>
+            <button id="btn-next-month" class="game-btn" disabled>▸ 다음 月</button>
         </div>
     </div>
     <div id="main-area">
@@ -146,6 +148,17 @@
     </div>
     <div id="ss-slot-list" class="ss-slot-list"></div>
     <div class="ss-hint">슬롯 클릭 = 저장 · 항목의 불러오기 = 해당 슬롯에서 시작</div>
+</div>
+
+<!-- 외교 패널 [341-360] -->
+<div id="diplomacy-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name">外交 — 세력 외교</span>
+        <button id="dp-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div class="dp-treasury" id="dp-treasury"></div>
+    <div id="dp-faction-list" class="dp-faction-list"></div>
+    <div class="ss-hint">관계 라벨 옆 버튼으로 외교 제안 — 증정은 국고 300 소모</div>
 </div>
 
 <!-- 엔딩 화면 -->

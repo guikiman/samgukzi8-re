@@ -11,53 +11,36 @@
  * - 야망이 높을수록 이탈 확률 증가
  * - 이탈 시 재야화 (또는 인접 적 세력으로 투쟁 — 간단화: 재야)
  */
-
-import type { GameStore } from './game_store.js';
 import { OfficerStatus } from './types.js';
-
-export interface RecruitmentResult {
-    success: boolean;
-    message: string;
-}
-
-export interface DefectionReport {
-    officerId: string;
-    officerName: string;
-    fromFactionId: string | null;
-    reason: 'LOYALTY_LOW' | 'AMBITION_HIGH';
-}
-
 /** 등용 난이도 상수 */
 const BASE_RECRUIT_CHANCE = 0.35;
 const LOYALTY_DEFENSE = 0.5;
 const AMBITION_BONUS = 0.3;
-
 /** 배신 임계값 */
 const DEFECT_LOYALTY_THRESHOLD = 30;
 const DEFECT_BASE_CHANCE = 0.25;
 const AMBITION_DEFECT_MULTIPLIER = 1.5;
-
 export class OfficerLoyaltySystem {
-    constructor(private store: GameStore) {}
-
+    constructor(store) {
+        this.store = store;
+    }
     /**
      * 등용 성공률 미리보기 [24] — UI 표시용 (실제 등용 로직과 동일 수식)
      * @param officerId 등용 대상 무장 ID
      * @param recruiterId 초빙 실행 무장 ID (생략 시 기본 능력 60 가정)
      */
-    getRecruitChance(officerId: string, recruiterId?: string): number {
+    getRecruitChance(officerId, recruiterId) {
         const target = this.store.getOfficer(officerId);
-        if (!target) return 0;
+        if (!target)
+            return 0;
         const recruiter = recruiterId ? this.store.getOfficer(recruiterId) : null;
         const recruitPower = (recruiter?.stats.politics ?? 60) * 0.6 + (recruiter?.stats.charisma ?? 60) * 0.4;
-
         let chance = BASE_RECRUIT_CHANCE;
-        chance += (recruitPower - 60) / 200;                 // 초빙 능력 ±0.2
-        chance -= (target.loyalty / 100) * LOYALTY_DEFENSE;  // 충성 방어 최대 -0.5
-        chance += (target.ambition / 100) * AMBITION_BONUS;  // 야망 최대 +0.3
+        chance += (recruitPower - 60) / 200; // 초빙 능력 ±0.2
+        chance -= (target.loyalty / 100) * LOYALTY_DEFENSE; // 충성 방어 최대 -0.5
+        chance += (target.ambition / 100) * AMBITION_BONUS; // 야망 최대 +0.3
         return Math.max(0.05, Math.min(0.95, chance));
     }
-
     /**
      * 무장 등용 시도
      * @param officerId 등용할 무장 ID
@@ -65,7 +48,7 @@ export class OfficerLoyaltySystem {
      * @param cityId 배치할 도시 ID
      * @param recruiterId 초빙 실행 무장 ID (능력치에 반영)
      */
-    recruit(officerId: string, targetFactionId: string, cityId: string, recruiterId?: string): RecruitmentResult {
+    recruit(officerId, targetFactionId, cityId, recruiterId) {
         const target = this.store.getOfficer(officerId);
         const faction = this.store.getFaction(targetFactionId);
         const city = this.store.getCity(cityId);
@@ -81,21 +64,17 @@ export class OfficerLoyaltySystem {
         if (target.status === OfficerStatus.FREE && !target.factionId) {
             // 재야 무장 — 등용 대상으로 유효
         }
-
         const recruiter = recruiterId ? this.store.getOfficer(recruiterId) : null;
         const recruitPower = (recruiter?.stats.politics ?? 60) * 0.6 + (recruiter?.stats.charisma ?? 60) * 0.4;
-
         // 성공률: 기본 35% + 초빙 능력 보정 - 충성도 방어 + 야망 보정
         let chance = BASE_RECRUIT_CHANCE;
-        chance += (recruitPower - 60) / 200;                 // 초빙 능력 ±0.2
-        chance -= (target.loyalty / 100) * LOYALTY_DEFENSE;  // 충성 방어 최대 -0.5
-        chance += (target.ambition / 100) * AMBITION_BONUS;  // 야망 최대 +0.3
+        chance += (recruitPower - 60) / 200; // 초빙 능력 ±0.2
+        chance -= (target.loyalty / 100) * LOYALTY_DEFENSE; // 충성 방어 최대 -0.5
+        chance += (target.ambition / 100) * AMBITION_BONUS; // 야망 최대 +0.3
         chance = Math.max(0.05, Math.min(0.95, chance));
-
         if (Math.random() > chance) {
             return { success: false, message: `${target.name} 등용 실패 (확률 ${(chance * 100).toFixed(0)}%)` };
         }
-
         // 편입 처리
         const oldFactionId = target.factionId;
         this.store.updateOfficer(officerId, {
@@ -105,12 +84,10 @@ export class OfficerLoyaltySystem {
             loyalty: 60 + Math.floor(Math.random() * 20),
             rank: Math.max(1, target.rank),
         });
-
         // 도시 무장 목록 추가
         if (!city.officerIds.includes(officerId)) {
             this.store.updateCity(cityId, { officerIds: [...city.officerIds, officerId] });
         }
-
         // 구세력 무장 목록에서 제거
         if (oldFactionId) {
             const oldFaction = this.store.getFaction(oldFactionId);
@@ -124,22 +101,19 @@ export class OfficerLoyaltySystem {
         this.store.updateFaction(targetFactionId, {
             officers: [...faction.officers, officerId],
         });
-
         return { success: true, message: `${target.name} 등용 성공! ${city.name}에 배치` };
     }
-
     /** 월간 배신 판정 — 충성도 낮은 무장 이탈 */
-    processMonthlyDefections(): DefectionReport[] {
-        const defected: DefectionReport[] = [];
+    processMonthlyDefections() {
+        const defected = [];
         const gs = this.store.getGlobalState();
-
         for (const officer of this.store.getAllOfficers()) {
-            if (!officer.factionId || officer.factionId === gs.playerFactionId) continue;
-            if (officer.status === OfficerStatus.FREE) continue;
-
+            if (!officer.factionId || officer.factionId === gs.playerFactionId)
+                continue;
+            if (officer.status === OfficerStatus.FREE)
+                continue;
             let defectChance = 0;
-            let reason: DefectionReport['reason'] | null = null;
-
+            let reason = null;
             if (officer.loyalty < DEFECT_LOYALTY_THRESHOLD) {
                 defectChance += DEFECT_BASE_CHANCE * (1 + (DEFECT_LOYALTY_THRESHOLD - officer.loyalty) / 30);
                 reason = 'LOYALTY_LOW';
@@ -148,7 +122,6 @@ export class OfficerLoyaltySystem {
                 defectChance += 0.15;
                 reason = reason ?? 'AMBITION_HIGH';
             }
-
             if (reason && defectChance > 0 && Math.random() < defectChance * AMBITION_DEFECT_MULTIPLIER * 0.5) {
                 const oldFaction = this.store.getFaction(officer.factionId);
                 this.store.updateOfficer(officer.id, {
@@ -181,3 +154,4 @@ export class OfficerLoyaltySystem {
         return defected;
     }
 }
+//# sourceMappingURL=officer_loyalty_system.js.map

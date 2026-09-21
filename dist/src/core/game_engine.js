@@ -14,6 +14,8 @@ import { getBootstrap } from './bootstrap.js';
 import { FactionAI } from './faction_ai_monthly.js';
 import { FactionFateSystem } from './faction_fate_system.js';
 import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
+import { DiplomacyEngine } from './diplomacy_engine.js';
+import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -29,6 +31,8 @@ export class GameEngine {
         this.factionAI = new FactionAI(this.store);
         this.fateSystem = new FactionFateSystem(this.store);
         this.loyaltySystem = new OfficerLoyaltySystem(this.store);
+        this.diplomacy = new DiplomacyEngine();
+        this.diplomacyAI = new FactionDiplomacyAI(this.store, this.diplomacy);
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -221,6 +225,20 @@ export class GameEngine {
                 }
             }
             this.processMonthlyMaintenance();
+            // AI 세력 월간 자율 외교 (선전포고/휴전/동맹) [341-360]
+            const diploReports = this.diplomacyAI.runMonthly();
+            for (const r of diploReports) {
+                for (const msg of r.messages) {
+                    console.log(`[Diplomacy] ${r.factionName}: ${msg}`);
+                    this.emitEvent({
+                        id: `diplomacy_${r.factionId}_${Date.now()}_${r.messages.indexOf(msg)}`,
+                        type: 'FACTION_DIPLOMACY',
+                        payload: { factionId: r.factionId, factionName: r.factionName, message: msg },
+                        timestamp: Date.now(),
+                        turn: this.store.getGlobalState().turnCount,
+                    });
+                }
+            }
             // 무장 배신 판정 (AI 세력 무장) [24]
             const defections = this.loyaltySystem.processMonthlyDefections();
             for (const d of defections) {
@@ -473,11 +491,16 @@ export class GameEngine {
         }
         this.workerPromises.clear();
     }
+    /** 외교 엔진 접근자 (UI/AI 용) [70-73] */
+    get diplomacyEngine() {
+        return this.diplomacy;
+    }
     save() {
         return {
             state: this.store.createSnapshot(),
             globalState: this.store.getGlobalState(),
             commands: this.commandQueue.serializeAll(),
+            diplomacy: this.diplomacy.serialize(),
         };
     }
     saveCompressed() {
@@ -505,6 +528,10 @@ export class GameEngine {
         // FSM을 세이브 시점 페이즈로 동기화 (onEnter 부작용 없이 상태만 복원)
         if (data.globalState.phase && data.globalState.phase !== this.currentPhase) {
             this.currentPhase = data.globalState.phase;
+        }
+        // 외교 관계 복원 (구버전 세이브 호환: 없으면 초기화 상태 유지)
+        if (data.diplomacy) {
+            this.diplomacy.restore(data.diplomacy);
         }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {

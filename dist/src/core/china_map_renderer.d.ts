@@ -1,0 +1,112 @@
+/**
+ * [Phase 3] 중국 전도 월드 렌더러 — ChinaMapRenderer
+ *
+ * 헥사곤 그리드 대신, 중국 본토 전도 위에 도시를 실제 지리 좌표에
+ * 자유 배치하고 클릭으로 선택하는 삼국지8 본가 스타일 전략 맵.
+ * 도시: 성 아이콘 + 소속기 색 + 병력 배지. 강/해안은 장식 윤곽으로 연출.
+ */
+export interface MapCityView {
+    id: string;
+    name: string;
+    x: number;
+    y: number;
+    ownerColor: string;
+    /** 소속 세력 이름 (영토 라벨 표시용) */
+    factionName?: string;
+    isPlayer: boolean;
+    garrison: number;
+    isSelected?: boolean;
+}
+export interface ChinaMapView {
+    offsetX: number;
+    offsetY: number;
+    zoom: number;
+}
+/**
+ * 점이 다각형 내부에 있는지 검사 (짝수 교차법).
+ * 영토 보로노이 셀을 대륙 윤곽으로 제한하는 데 사용.
+ */
+export declare function pointInPolygon(px: number, py: number, polygon: Array<{
+    x: number;
+    y: number;
+}>): boolean;
+export declare class ChinaMapRenderer {
+    private canvas;
+    private ctx;
+    private offsetX;
+    private offsetY;
+    private zoom;
+    private hoveredCityId;
+    private cities;
+    /** 영토 셀 (보로노이 근사 그리드) 캐시 */
+    private territoryCells;
+    private territoryCols;
+    private territoryRows;
+    private territoryDirty;
+    /** 세력 라벨 (영토 무게중심 + 크기) — rebuildTerritory에서 산출 */
+    private factionLabels;
+    /** 오프스크린 영토/경계 레이어 (확대 보간용) */
+    private territoryLayer;
+    private borderLayer;
+    private territoryLayerDirty;
+    private borderLayerDirty;
+    private static readonly CELL_SIZE;
+    constructor(canvas: HTMLCanvasElement);
+    setView(view: Partial<ChinaMapView>): void;
+    setCities(cities: MapCityView[]): void;
+    /**
+     * 영토 격자 재계산 — 도시 위치 기반 보로노이 근사.
+     * 대륙 윤곽 내부의 셀만 가장 가까운 도시의 소속 색으로 채운다.
+     */
+    private rebuildTerritory;
+    setHoveredCity(id: string | null): void;
+    /** 맵 패딩을 포함한 정규화 → 픽셀 변환 */
+    private normToPixel;
+    /** 화면 픽셀 → 정규화 좌표 (역변환) */
+    screenToNorm(px: number, py: number): {
+        x: number;
+        y: number;
+    };
+    /**
+     * 픽셀 좌표 아래의 도시를 찾는다 (없으면 null)
+     */
+    cityAt(px: number, py: number): MapCityView | null;
+    render(): void;
+    /**
+     * 영토 레이어 — 저해상도 오프스크린 캔버스에 셀 색을 칠한 뒤
+     * 메인 캔버스로 확대 블릿(imageSmoothing 보간). 셀 계단이
+     * 자연스럽게 그라데이션처럼 블렌딩되어 부드러운 경계가 된다.
+     */
+    private drawTerritory;
+    /**
+     * 영토 오프스크린 레이어 생성/갱신.
+     * 해상도: 대략 셀당 3~4픽셀 (확대 시 보간으로 부드러워짐).
+     * 색은 최종 알파(플레이어 0.34 / 일반 0.22)를 미리 곱해 담는다.
+     */
+    private getTerritoryLayer;
+    /**
+     * 세력 경계선 — 셀 가장자리 선 대신, 저해상도 경계 마스크를
+     * 확대 보간해 부드러운 음영 밴드로 표현.
+     * 경계 마스크: 이웃 셀과 소속이 다른 셀에 밝은 픽셀을 찍고,
+     * 확대 시 곡선처럼 흐르는 어두운 띠가 된다.
+     */
+    private drawTerritoryBorders;
+    /**
+     * 세력명 라벨 — 영토 무게중심에 반투명 대형 글씨로 표기.
+     * 글자 크기는 영토 셀 수(면적)에 비례. 도시 뒤, 지형 앞에 얹힌다.
+     */
+    private drawFactionLabels;
+    /** HEX 색을 밝게 섞는 헬퍼 (t: 0~1, 1에 가까울수록 흰색) */
+    private lightenColor;
+    private drawCity;
+    pan(dx: number, dy: number): void;
+    zoomAt(factor: number, centerPx: number, centerPy: number): void;
+    private baseScale;
+    /** 테스트/디버그용: 현재 영토 셀 통계 */
+    getTerritoryStats(): {
+        total: number;
+        colored: number;
+    };
+    getState(): ChinaMapView;
+}
+//# sourceMappingURL=china_map_renderer.d.ts.map
