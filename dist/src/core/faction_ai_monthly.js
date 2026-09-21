@@ -9,6 +9,8 @@
  * 성향(군주 personality)에 따라 공격성이 달라진다.
  */
 import { assembleReinforcements } from './reinforcement_system.js';
+import { processBattleSpoils } from './battle_spoils_system.js';
+import { processCaptives } from './ai_captive_system.js';
 /** 전도 정규화 좌표 기반 인접 판정 거리 (main.ts의 ADJACENT_DIST와 동일 기준) */
 const ADJACENT_DIST = 0.16;
 /** 군주 성향별 공격성 (출진 확률 가중) */
@@ -102,6 +104,18 @@ export class FactionAI {
             const odds = attackPower / (attackPower + defensePower2);
             const won = Math.random() < odds;
             if (won) {
+                const prevOwnerId = target.ownerId;
+                // 전투 후처리 [131-145] — 소유권 변경 전에 실행해야 약탈/포획이
+                // 옛 소유 세력 기준으로 정확히 적용된다
+                if (prevOwnerId) {
+                    const spoils = processBattleSpoils(this.store, src.id, target.id);
+                    actions.push(...spoils.messages);
+                    // AI 포로 후처리 [121-130]: 등용/처형/석방 판정
+                    if (spoils.capturedOfficerIds.length > 0) {
+                        const captiveReport = processCaptives(this.store, faction.id, spoils.capturedOfficerIds);
+                        actions.push(...captiveReport.messages);
+                    }
+                }
                 this.store.updateCity(target.id, { ownerId: faction.id, defense: Math.max(5, Math.floor(target.defense * 0.4)) });
                 this.store.updateCity(src.id, { development: Math.max(0, Math.floor(src.development * 0.85)) });
                 conqueredCityId = target.id;

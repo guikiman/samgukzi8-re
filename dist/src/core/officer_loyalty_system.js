@@ -12,6 +12,7 @@
  * - 이탈 시 재야화 (또는 인접 적 세력으로 투쟁 — 간단화: 재야)
  */
 import { OfficerStatus } from './types.js';
+import { applyRecruitFailure, getRecruitAffinityModifier } from './recruit_relation_system.js';
 /** 등용 난이도 상수 */
 const BASE_RECRUIT_CHANCE = 0.35;
 const LOYALTY_DEFENSE = 0.5;
@@ -39,6 +40,9 @@ export class OfficerLoyaltySystem {
         chance += (recruitPower - 60) / 200; // 초빙 능력 ±0.2
         chance -= (target.loyalty / 100) * LOYALTY_DEFENSE; // 충성 방어 최대 -0.5
         chance += (target.ambition / 100) * AMBITION_BONUS; // 야망 최대 +0.3
+        if (recruiterId) {
+            chance += getRecruitAffinityModifier(this.store, recruiterId, officerId); // 우호도 ±0.15
+        }
         return Math.max(0.05, Math.min(0.95, chance));
     }
     /**
@@ -72,7 +76,15 @@ export class OfficerLoyaltySystem {
         chance -= (target.loyalty / 100) * LOYALTY_DEFENSE; // 충성 방어 최대 -0.5
         chance += (target.ambition / 100) * AMBITION_BONUS; // 야망 최대 +0.3
         chance = Math.max(0.05, Math.min(0.95, chance));
+        if (recruiterId) {
+            chance += getRecruitAffinityModifier(this.store, recruiterId, officerId); // 우호도 ±0.15
+        }
+        chance = Math.max(0.05, Math.min(0.95, chance));
         if (Math.random() > chance) {
+            // 등용 실패 → 관계망 악화 [C-인간관계]: 초빙자가 있으면 우호도 -10
+            if (recruiterId) {
+                applyRecruitFailure(this.store, recruiterId, officerId);
+            }
             return { success: false, message: `${target.name} 등용 실패 (확률 ${(chance * 100).toFixed(0)}%)` };
         }
         // 편입 처리

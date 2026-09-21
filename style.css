@@ -862,6 +862,25 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 ::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.5); }
 
+/* ---------- 무장 상세 패널 [27][11] ---------- */
+.od-empty { color: var(--text-muted); text-align: center; padding: 12px 0; }
+.od-name-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.od-name { font-size: 16px; font-weight: bold; color: var(--gold, #d4af37); }
+.od-faction { font-size: 11px; color: var(--text-muted); }
+.od-stat-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.od-stat-label { width: 30px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.od-stat-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.od-stat-fill { height: 100%; border-radius: 4px; transition: width .4s ease; }
+.od-stat-val { width: 28px; text-align: right; font-size: 11px; font-weight: bold; color: var(--text, #ddd); flex-shrink: 0; }
+.od-loyalty-row { display: flex; justify-content: space-between; margin: 8px 0 4px; font-size: 12px; color: var(--text-muted); }
+.od-loyalty-row b { font-size: 13px; }
+.od-relations-title { text-align: center; font-size: 10px; color: var(--text-muted); margin: 8px 0 4px; opacity: .7; }
+.od-relation { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 4px; border-radius: 4px; }
+.od-relation:hover { background: rgba(212, 175, 55, 0.06); }
+.od-relation-empty { color: var(--text-muted); justify-content: center; opacity: .6; }
+.cdp-officer-clickable { cursor: pointer; }
+.cdp-officer-clickable:hover { border-color: var(--gold-dim, #d4af37); background: rgba(212, 175, 55, 0.05); }
+
 /* ---------- 접근성: 모션 최소화 ---------- */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

@@ -277,6 +277,8 @@ function showCityInfo(cityId: string): void {
         if (!city) return;
         const faction = city.ownerId ? store.getFaction(city.ownerId) : null;
         officerDetail.textContent = `도시: ${city.name} (인구 ${city.population.toLocaleString()})`;
+        renderOfficerDetail(null); // 도시 전환 시 무장 상세 초기화
+        renderOfficerDetail(null); // 도시 전환 시 무장 상세 초기화
         factionDetail.textContent = faction
             ? `${faction.name} — 병력 ${city.development} · 충성 ${city.loyalty}`
             : '무주공산';
@@ -297,6 +299,68 @@ const cdpCityName = document.getElementById('cdp-city-name')!;
 const cdpFactionBadge = document.getElementById('cdp-faction-badge')!;
 const cdpStats = document.getElementById('cdp-stats')!;
 const cdpOfficers = document.getElementById('cdp-officers')!;
+
+// === 무장 상세 표시 [27][11] ===
+
+/**
+ * 무장 상세 정보 렌더링 [27] — 사이드바 officer-detail 패널
+ * 능력치 5종 + 충성도/야망 + 관계망 상위 3인 (관계 시스템 [C-인간관계] 연동)
+ */
+function renderOfficerDetail(officerId: string | null): void {
+    if (!officerId) {
+        officerDetail.innerHTML = '<div class="od-empty">무장을 선택하세요</div>';
+        return;
+    }
+    if (!engine) return;
+    const store = engine['store'];
+    const o = store.getOfficer(officerId);
+    if (!o) { officerDetail.innerHTML = '<div class="od-empty">무장을 찾을 수 없습니다</div>'; return; }
+
+    const statBar = (label: string, val: number, color: string) =>
+        `<div class="od-stat-row"><span class="od-stat-label">${label}</span>` +
+        `<div class="od-stat-bar"><div class="od-stat-fill" style="width:${val}%;background:${color}"></div></div>` +
+        `<span class="od-stat-val">${val}</span></div>`;
+
+    // 관계망 [C-인간관계]: 절대 우호도 기준 상위 3인
+    const relations = store.getRelationships(officerId)
+        .slice()
+        .sort((a, b) => Math.abs(b.affinity) - Math.abs(a.affinity))
+        .slice(0, 3);
+    const relationRows = relations.length > 0
+        ? relations.map(e => {
+            const other = store.getOfficer(e.target);
+            if (!other) return '';
+            const icon = e.affinity >= 40 ? '💚' : e.affinity <= -40 ? '💢' : '·';
+            const label = e.type === 'SWORN_BROTHER' ? '의형제' : e.type === 'NEMESIS' ? '원수' : e.type === 'RIVAL' ? '라이벌' : e.type === 'FAMILY' ? '친족' : '지인';
+            return `<div class="od-relation"><span>${icon} ${other.name}</span><span>${label} ${e.affinity >= 0 ? '+' : ''}${e.affinity}</span></div>`;
+        }).join('')
+        : '<div class="od-relation od-relation-empty">특별한 관계 없음</div>';
+
+    const statusLabel = o.status === 'FREE' ? '재야' : o.factionId ? (store.getFaction(o.factionId)?.name ?? '-') : '-';
+    const loyaltyColor = o.loyalty >= 70 ? '#4caf50' : o.loyalty >= 40 ? '#e8c35a' : '#e05a5a';
+
+    officerDetail.innerHTML = `
+        <div class="od-name-row"><span class="od-name">${o.name}</span><span class="od-faction">${statusLabel}</span></div>
+        ${statBar('統率', o.stats.leadership, '#5a8fd4')}
+        ${statBar('武力', o.stats.might, '#d45a5a')}
+        ${statBar('智力', o.stats.intelligence, '#5ad48f')}
+        ${statBar('政治', o.stats.politics, '#e8c35a')}
+        ${statBar('魅力', o.stats.charisma, '#c35ad4')}
+        <div class="od-loyalty-row">
+            <span>충성도 <b style="color:${loyaltyColor}">${o.loyalty}</b></span>
+            <span>야망 <b>${o.ambition}</b></span>
+        </div>
+        <div class="od-relations-title">── 인맥 ──</div>
+        ${relationRows}
+    `;
+}
+
+// 무장 목록 클릭 → 상세 정보 표시 [27]
+cdpOfficers.addEventListener('click', (e) => {
+    const row = (e.target as HTMLElement).closest('.cdp-officer-clickable') as HTMLElement | null;
+    if (!row) return;
+    renderOfficerDetail(row.dataset.officerId ?? null);
+});
 
 document.getElementById('cdp-close')!.addEventListener('click', () => {
     cityDetailPanel.style.display = 'none';
@@ -345,7 +409,7 @@ function renderCityDetailPanel(city: import('./core/types.js').City, faction: im
     cdpOfficers.innerHTML = officers.map(o => {
         const isLeader = faction?.leaderId === o.id;
         const role = isLeader ? '군주' : (o.rank >= 5 ? '장군' : '무관');
-        return `<div class="cdp-officer-row">
+        return `<div class="cdp-officer-row cdp-officer-clickable" data-officer-id="${o.id}" title="클릭하여 상세 정보 보기">
             <div>
                 <div class="cdp-officer-name ${isLeader ? 'is-leader' : ''}">${o.name}</div>
                 <div class="cdp-officer-stats">統率${o.stats.leadership} 武力${o.stats.might} 智力${o.stats.intelligence}</div>
@@ -1271,7 +1335,16 @@ function init(): void {
     });
 
     // AI 세력 월간 행동 후 자동 저장 (auto 슬롯) [212]
-    engine.subscribe('FACTION_AI_ACTION', () => {
+    engine.subscribe('FACTION_AI_ACTION', (event: any) => {
+        // AI 행동 로그 표시 [201] — 내정/징병/공성/포로 후처리 메시지를 게임 로그에 반영
+        if (event?.payload?.actions) {
+            const factionName = event.payload.factionId
+                ? engine['store'].getFaction(event.payload.factionId)?.name ?? 'AI'
+                : 'AI';
+            for (const action of event.payload.actions) {
+                addLog(`🤖 [${factionName}] ${action}`);
+            }
+        }
         if (!engine) return;
         try {
             const compressed = engine.saveCompressed();

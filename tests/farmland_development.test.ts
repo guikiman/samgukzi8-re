@@ -17,12 +17,15 @@ describe('FarmlandDevelopment', () => {
     });
 
     it('should give bonus with farming skill', () => {
-        const city1 = makeCity(200, false);
-        const city2 = makeCity(200, false);
-        const r1 = farm.cultivate(city1, 80, true);
-        const r2 = farm.cultivate(city2, 80, false);
-        // Skill bonus should make r1 gains >= r2 gains on average
-        expect(r1.agricultureGain).toBeGreaterThanOrEqual(r2.agricultureGain);
+        // 단일 샘플은 랜덤 범위(5~10)가 겹쳐 플래키하므로 다중 샘플 평균으로 검증
+        // 스킬 있음: 효율 1.1 → 평균 약 8.25 / 없음: 효율 0.8 → 평균 약 6.0
+        const samples = 100;
+        let sumWith = 0, sumWithout = 0;
+        for (let i = 0; i < samples; i++) {
+            sumWith += farm.cultivate(makeCity(200, false), 80, true).agricultureGain;
+            sumWithout += farm.cultivate(makeCity(200, false), 80, false).agricultureGain;
+        }
+        expect(sumWith / samples).toBeGreaterThan(sumWithout / samples);
     });
 
     it('should calculate harvest correctly', () => {
