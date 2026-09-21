@@ -21,7 +21,9 @@ import { FactionRelation } from './core/diplomacy_engine.js';
 import type { DiplomacyEngine } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
-import { tryVengeanceOnEncounter } from './core/vengeance_system.js';
+import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter } from './core/vengeance_system.js';
+import type { DuelMinigame } from './core/duel_minigame.js';
+import type { DebateMinigame } from './core/debate_minigame.js';
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 
 // ============================================================
@@ -92,6 +94,148 @@ function addLog(msg: string): void {
     logContent.appendChild(entry);
     logContent.scrollTop = logContent.scrollHeight;
 }
+
+// ============================================================
+// 복수 미니게임 모달 [32][33] — 플레이어 관여 일기토/설전
+// ============================================================
+
+interface VengeanceModalState {
+    store: import('./core/game_store.js').GameStore;
+    actorId: string;
+    targetId: string;
+    kind: 'DUEL' | 'DEBATE';
+    game: DuelMinigame | DebateMinigame;
+    enemyUnits: Array<{ morale: number }>;
+    done: boolean;
+}
+
+let vmState: VengeanceModalState | null = null;
+
+function openVengeanceModal(
+    store: import('./core/game_store.js').GameStore,
+    actorId: string,
+    targetId: string,
+    kind: 'DUEL' | 'DEBATE',
+    enemyUnits: Array<{ morale: number }>,
+): void {
+    const game = startVengeanceGame(store, actorId, targetId, kind);
+    vmState = { store, actorId, targetId, kind, game, enemyUnits, done: false };
+
+    const modal = document.getElementById('vengeance-modal')!;
+    const actor = store.getOfficer(actorId)!;
+    const target = store.getOfficer(targetId)!;
+    document.getElementById('vm-title')!.textContent = kind === 'DUEL' ? '復讐 — 단기접전' : '復讐 — 설전';
+    document.getElementById('vm-subtitle')!.textContent = `${actor.name}의 복수 — 원수 ${target.name} 조우`;
+    document.getElementById('vm-player-name')!.textContent = actor.name;
+    document.getElementById('vm-enemy-name')!.textContent = target.name;
+    document.getElementById('vm-close')!.style.display = 'none';
+    modal.style.display = 'flex';
+    addLog(`⚔️ 복수의 기회! ${actor.name}이(가) 원수 ${target.name}을(를) 조우했습니다`);
+    renderVengeanceModal();
+}
+
+function renderVengeanceModal(): void {
+    if (!vmState) return;
+    const { kind, game } = vmState;
+    const logEl = document.getElementById('vm-log')!;
+    const cardsEl = document.getElementById('vm-cards')!;
+
+    if (kind === 'DUEL') {
+        const s = (game as DuelMinigame).getState();
+        setVmBar('player', s.playerHp, s.playerMaxHp);
+        setVmBar('enemy', s.enemyHp, s.enemyMaxHp);
+        document.getElementById('vm-player-num')!.textContent = `HP ${s.playerHp}/${s.playerMaxHp}`;
+        document.getElementById('vm-enemy-num')!.textContent = `HP ${s.enemyHp}/${s.enemyMaxHp}`;
+        document.getElementById('vm-player-spirit')!.textContent = `氣 ${'◆'.repeat(Math.max(0, s.playerSpirit))}`;
+        logEl.innerHTML = s.log.map(l => `<div class="vm-log-line">${l}</div>`).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+
+        if (s.phase === 'DONE') {
+            finishVengeanceModal((game as DuelMinigame).getWinner() === vmState.actorId);
+            return;
+        }
+        const cards = (game as DuelMinigame).getAvailableCards(s.playerSpirit);
+        cardsEl.innerHTML = cards.map(c =>
+            `<button class="vm-card" data-card="${c.type}" ${c.spiritCost > s.playerSpirit ? 'disabled' : ''}>
+                <span class="vm-card-label">${c.label}${c.spiritCost > 0 ? ` (氣${c.spiritCost})` : ''}</span>
+                <span class="vm-card-desc">${c.description}</span>
+            </button>`).join('');
+    } else {
+        const s = (game as DebateMinigame).getState();
+        setVmBar('player', Math.max(0, s.playerScore), 100);
+        setVmBar('enemy', Math.max(0, s.enemyScore), 100);
+        document.getElementById('vm-player-num')!.textContent = `논점 ${Math.max(0, s.playerScore)}`;
+        document.getElementById('vm-enemy-num')!.textContent = `논점 ${Math.max(0, s.enemyScore)}`;
+        document.getElementById('vm-player-spirit')!.textContent = `氣 ${'◆'.repeat(Math.max(0, s.playerSpirit))}`;
+        logEl.innerHTML = s.log.map(l => `<div class="vm-log-line">${l}</div>`).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+
+        if (s.phase === 'DONE') {
+            const result = (game as DebateMinigame).getDebateResult();
+            finishVengeanceModal(result.winner === vmState.actorId);
+            return;
+        }
+        const cards = (game as DebateMinigame).getAvailableCards(s.playerSpirit, s.playerMood);
+        cardsEl.innerHTML = cards.map(c =>
+            `<button class="vm-card" data-card="${c.type}" ${c.spiritCost > s.playerSpirit ? 'disabled' : ''}>
+                <span class="vm-card-label">${c.label}${c.spiritCost > 0 ? ` (氣${c.spiritCost})` : ''}</span>
+                <span class="vm-card-desc">${c.description}</span>
+            </button>`).join('');
+    }
+}
+
+function setVmBar(side: 'player' | 'enemy', value: number, max: number): void {
+    const bar = document.getElementById(`vm-${side}-bar`)!;
+    const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+    bar.style.width = `${pct}%`;
+}
+
+function finishVengeanceModal(actorWon: boolean): void {
+    if (!vmState || vmState.done) return;
+    vmState.done = true;
+    const { store, actorId, targetId, kind, enemyUnits } = vmState;
+
+    // 후처리: 우호도 + 명성 [C-인간관계][11]
+    const outcome = finishVengeance(store, actorId, targetId, actorWon);
+    addLog(outcome.message);
+
+    // 복수 성공 시 적군 사기 타격 (전투 유닛 반영)
+    if (actorWon && outcome.targetMoraleHit > 0) {
+        for (const eu of enemyUnits) {
+            eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
+        }
+        addLog('🪫 적군 병력 사기가 크게 흔들립니다!');
+    }
+
+    // 종료 로그
+    const logEl = document.getElementById('vm-log')!;
+    const resultLine = kind === 'DUEL'
+        ? (actorWon ? '🏆 단기접전 승리!' : '💀 단기접전 패배...')
+        : (actorWon ? '🏆 설전 승리!' : '💀 설전 패배...');
+    logEl.innerHTML += `<div class="vm-log-line"><b>${resultLine}</b></div>`;
+    document.getElementById('vm-cards')!.innerHTML = '';
+    document.getElementById('vm-close')!.style.display = 'inline-block';
+}
+
+// 카드 클릭 — 플레이어 선택으로 턴 진행
+document.getElementById('vm-cards')!.addEventListener('click', (e) => {
+    if (!vmState || vmState.done) return;
+    const btn = (e.target as HTMLElement).closest('.vm-card') as HTMLElement | null;
+    if (!btn || btn.hasAttribute('disabled')) return;
+    const card = btn.dataset.card;
+    if (!card) return;
+    if (vmState.kind === 'DUEL') {
+        (vmState.game as DuelMinigame).playCard(card as never);
+    } else {
+        (vmState.game as DebateMinigame).playCard(card as never);
+    }
+    renderVengeanceModal();
+});
+
+document.getElementById('vm-close')!.addEventListener('click', () => {
+    document.getElementById('vengeance-modal')!.style.display = 'none';
+    vmState = null;
+});
 
 // ============================================================
 // Demo Hex Map Data
@@ -1030,25 +1174,36 @@ function enterBattleMode(): void {
     void deployable; void enemyUnits;
 
     // 복수 이벤트 판정 [32][33][C-인간관계] — 출진 편성에 실제 무장 ID가 있는 경우
-    // 아군×적군 유닛쌍 중 NEMESIS 관계가 조우하면 설전/단기접전 복수 이벤트 발동
+    // 아군×적군 유닛쌍 중 NEMESIS 관계가 조우하면 복수 이벤트 발동:
+    // 플레이어 관여(아군이 주도) → 인터랙티브 미니게임 / AI 주도 → 자동 판정
     if (expeditionSource && expeditionTarget && engine) {
         const storeV = engine['store'];
+        const gsV = storeV.getGlobalState();
         const friendlyIds = (storeV.getCity(expeditionSource)?.officerIds ?? []).slice(0, 4);
-        const enemyOfficerIds = (storeV.getCity(expeditionTarget)?.officerIds ?? []).slice(0, 3);
+        // 수비 도시 전체 무장을 복수 판정 대상으로 (전투 유닛은 상위 3명뿐이지만 관계망은 전원)
+        const enemyOfficerIds = storeV.getCity(expeditionTarget)?.officerIds ?? [];
         outer: for (const fId of friendlyIds) {
             for (const eId of enemyOfficerIds) {
-                const outcome = tryVengeanceOnEncounter(storeV, fId, eId);
-                if (outcome.triggered) {
-                    addLog(outcome.message);
-                    // 복수 성공 시 적군 전체 사기 타격 (전투 유닛 반영)
-                    if (outcome.success && outcome.targetMoraleHit > 0) {
-                        for (const eu of enemyUnits) {
-                            eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
+                const judged = judgeVengeanceOnly(storeV, fId, eId);
+                if (!judged.triggered || !judged.kind || !judged.actorId || !judged.targetId) continue;
+                // 주도자가 플레이어 세력 소속이면 인터랙티브 모달로 진행
+                const actor = storeV.getOfficer(judged.actorId);
+                if (actor && actor.factionId === gsV.playerFactionId) {
+                    openVengeanceModal(storeV, judged.actorId, judged.targetId, judged.kind, enemyUnits);
+                } else {
+                    // AI 주도 — 자동 판정
+                    const outcome = tryVengeanceOnEncounter(storeV, fId, eId);
+                    if (outcome.triggered) {
+                        addLog(outcome.message);
+                        if (outcome.success && outcome.targetMoraleHit > 0) {
+                            for (const eu of enemyUnits) {
+                                eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
+                            }
+                            addLog(`🪫 ${storeV.getCity(expeditionTarget)?.name ?? '적군'} 병력 사기가 흔들립니다`);
                         }
-                        addLog(`🪫 ${storeV.getCity(expeditionTarget)?.name ?? '적군'} 병력 사기가 흔들립니다`);
                     }
-                    break outer; // 전투당 복수 이벤트 1회
                 }
+                break outer; // 전투당 복수 이벤트 1회
             }
         }
     }
@@ -1472,6 +1627,10 @@ function init(): void {
     // 월간 복수 이벤트 [32][33][C-인간관계]
     engine.subscribe('VENGEANCE_EVENT', (event: any) => {
         addLog(`${event.payload.message}`);
+    });
+    // 의형제 구출 이벤트 [C-인간관계]
+    engine.subscribe('SWORN_BROTHER_RESCUED', (event: any) => {
+        addLog(`🤝 의형제 구출: ${event.payload.rescuerName}이(가) ${event.payload.officerName}을(를) 구했습니다`);
     });
     engine.subscribe('GAME_ENDING', (event: any) => {
         showEnding(event.payload.ending as string, event.payload.winner as string);

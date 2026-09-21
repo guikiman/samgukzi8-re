@@ -18,6 +18,7 @@ import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
+import { processMonthlySwornBrotherRescues } from './sworn_brother_rescue_system.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -256,7 +257,18 @@ export class GameEngine {
                     turn: this.store.getGlobalState().turnCount,
                 });
             }
-            // 포로 월간 탈출 판정 [131-145]
+            // 포로 월간 탈출 판정 + 의형제 구출 [131-145][C-인간관계]
+            const rescueReport = processMonthlySwornBrotherRescues(this.store);
+            for (const rec of rescueReport.rescued) {
+                console.log(`[Engine] ${rec.message}`);
+                this.emitEvent({
+                    id: `sworn_rescue_${rec.officerId}_${Date.now()}`,
+                    type: 'SWORN_BROTHER_RESCUED',
+                    payload: { officerId: rec.officerId, officerName: rec.officerName, rescuerId: rec.rescuerId, rescuerName: rec.rescuerName, toCityId: rec.toCityId },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             const captiveReport = processMonthlyCaptiveEvents(this.store);
             for (const rec of captiveReport.escaped) {
                 console.log(`[Engine] ${rec.message}`);

@@ -176,6 +176,36 @@
     </div>
 </div>
 
+<!-- 복수 미니게임 모달 [32][33] — 플레이어 관여 일기토/설전 -->
+<div id="vengeance-modal" style="display:none;">
+    <div class="vm-frame">
+        <div class="vm-header">
+            <span id="vm-title" class="vm-title">復讐 — 복수의 순간</span>
+            <span id="vm-subtitle" class="vm-subtitle"></span>
+        </div>
+        <div class="vm-status">
+            <div class="vm-side">
+                <span class="vm-name" id="vm-player-name">-</span>
+                <div class="vm-bar-wrap"><div id="vm-player-bar" class="vm-bar player"></div></div>
+                <span id="vm-player-num" class="vm-num">-</span>
+                <span id="vm-player-spirit" class="vm-spirit"></span>
+            </div>
+            <span class="vm-vs">VS</span>
+            <div class="vm-side">
+                <span class="vm-name" id="vm-enemy-name">-</span>
+                <div class="vm-bar-wrap"><div id="vm-enemy-bar" class="vm-bar enemy"></div></div>
+                <span id="vm-enemy-num" class="vm-num">-</span>
+                <span id="vm-enemy-spirit" class="vm-spirit"></span>
+            </div>
+        </div>
+        <div id="vm-cards" class="vm-cards"></div>
+        <div id="vm-log" class="vm-log"></div>
+        <div class="vm-footer">
+            <button id="vm-close" class="title-btn small" style="display:none;">닫기</button>
+        </div>
+    </div>
+</div>
+
 <!-- 시나리오 선택 오버레이 [9] -->
 <div id="scenario-screen" class="flow-screen" style="display:none;">
     <canvas id="scenario-particles"></canvas>

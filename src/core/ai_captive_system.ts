@@ -110,12 +110,17 @@ export function processCaptives(
         if (judgeExecution(cruel, execRoll)) {
             // 처형: 무장 제거 (인덱스/관계망 정리는 store가 수행)
             store.removeOfficer(officer.id);
+            // 명성/악명 연동 [11]: 처형은 악명 상승 + 명성 하락
+            store.updateOfficer(leader.id, {
+                infamy: Math.min(9999, leader.infamy + 30),
+                fame: Math.max(0, leader.fame - 10),
+            });
             outcomes.push({
                 officerId: officer.id,
                 officerName: officer.name,
                 decision: 'EXECUTE',
                 success: true,
-                message: `⚔️ ${leader.name}은(는) 포로 ${officer.name}을(를) 처형했다`,
+                message: `⚔️ ${leader.name}은(는) 포로 ${officer.name}을(를) 처형했다 (악명 +30)`,
             });
             messages.push(outcomes[outcomes.length - 1].message);
             continue;
@@ -166,6 +171,11 @@ export function processCaptives(
                 const releaseDiplo = applyCaptiveReleaseDiplomacy(store, diplomacy, factionId, officer.id);
                 releaseMessages.push(...releaseDiplo.messages);
             }
+            // 명성/악명 연동 [11]: 석방은 명성 상승 (인도적 평판)
+            store.updateOfficer(leader.id, {
+                fame: Math.min(9999, leader.fame + 15),
+            });
+            releaseMessages.push(`✨ ${leader.name}의 명성이 높아졌습니다 (명성 +15)`);
             outcomes.push({
                 officerId: officer.id,
                 officerName: officer.name,

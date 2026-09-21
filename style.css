@@ -891,6 +891,33 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .cdp-officer-clickable { cursor: pointer; }
 .cdp-officer-clickable:hover { border-color: var(--gold-dim, #d4af37); background: rgba(212, 175, 55, 0.05); }
 
+/* ---------- 복수 미니게임 모달 [32][33] ---------- */
+#vengeance-modal { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; background: rgba(10, 8, 6, 0.78); backdrop-filter: blur(3px); }
+.vm-frame { width: min(520px, 92vw); max-height: 88vh; overflow-y: auto; background: linear-gradient(160deg, #1c1710 0%, #14100b 100%); border: 1px solid var(--gold-dim, #d4af37); border-radius: 10px; padding: 14px 16px; box-shadow: 0 12px 48px rgba(0,0,0,.6); }
+.vm-header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.vm-title { font-size: 16px; font-weight: bold; color: var(--gold, #d4af37); letter-spacing: 2px; }
+.vm-subtitle { font-size: 12px; color: var(--text-muted); }
+.vm-status { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.vm-side { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.vm-side:last-child { align-items: flex-end; text-align: right; }
+.vm-name { font-size: 13px; font-weight: bold; color: var(--text, #e8dcc8); }
+.vm-bar-wrap { width: 100%; height: 10px; background: rgba(255,255,255,.08); border-radius: 5px; overflow: hidden; }
+.vm-bar { height: 100%; border-radius: 5px; transition: width .3s ease; }
+.vm-bar.player { background: linear-gradient(90deg, #4a7fbf, #6aa9e8); }
+.vm-bar.enemy { background: linear-gradient(90deg, #bf4a4a, #e86a6a); }
+.vm-num { font-size: 11px; color: var(--text-muted); }
+.vm-spirit { font-size: 11px; color: #e8c35a; }
+.vm-vs { font-size: 14px; font-weight: bold; color: #e05a5a; }
+.vm-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.vm-card { background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 6px; color: var(--text, #e8dcc8); padding: 8px 4px; cursor: pointer; text-align: center; transition: background .15s ease, transform .1s ease; }
+.vm-card:hover:not(:disabled) { background: rgba(212, 175, 55, 0.2); transform: translateY(-2px); }
+.vm-card:disabled { opacity: .35; cursor: not-allowed; }
+.vm-card-label { font-size: 13px; font-weight: bold; color: var(--gold, #d4af37); display: block; }
+.vm-card-desc { font-size: 10px; color: var(--text-muted); display: block; margin-top: 2px; }
+.vm-log { min-height: 64px; max-height: 130px; overflow-y: auto; background: rgba(0,0,0,.3); border-radius: 6px; padding: 8px 10px; font-size: 11px; line-height: 1.7; color: var(--text-muted); margin-bottom: 10px; }
+.vm-log .vm-log-line:last-child { color: var(--text, #e8dcc8); }
+.vm-footer { display: flex; justify-content: center; }
+
 /* ---------- 접근성: 모션 최소화 ---------- */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

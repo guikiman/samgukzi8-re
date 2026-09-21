@@ -188,6 +188,91 @@ export function tryVengeanceOnEncounter(
     return executeVengeance(store, judged.actorId, judged.targetId, judged.kind);
 }
 
+/** 복수 판정 결과 — UI에서 플레이어 관여 여부를 결정할 때 사용 */
+export interface VengeanceJudgement {
+    triggered: boolean;
+    kind: VengeanceKind | null;
+    actorId: string | null;
+    targetId: string | null;
+}
+
+/** 판정만 수행 (실행 없음) — UI가 플레이어 관여 여부를 판단한 뒤 실행 방식을 선택 */
+export function judgeVengeanceOnly(
+    store: GameStore,
+    aId: string,
+    bId: string,
+    roll: number = Math.random(),
+): VengeanceJudgement {
+    return judgeVengeance(store, aId, bId, roll);
+}
+
+/**
+ * 복수 이벤트를 새 미니게임 인스턴스로 시작한다 — 인터랙티브 UI용.
+ * 반환된 게임 인스턴스를 UI가 카드 선택을 받아 진행하고,
+ * 종료 후 finishVengeanceWithGame으로 후처리(우호도/명성)를 적용한다.
+ */
+export function startVengeanceGame(
+    store: GameStore,
+    actorId: string,
+    targetId: string,
+    kind: VengeanceKind,
+): DuelMinigame | DebateMinigame {
+    const actor = store.getOfficer(actorId);
+    const target = store.getOfficer(targetId);
+    if (!actor || !target) throw new Error('복수 이벤트 무장을 찾을 수 없습니다');
+    if (kind === 'DUEL') {
+        const duel = new DuelMinigame();
+        duel.startDuel(actor.id, target.id, actor.stats, target.stats);
+        return duel;
+    }
+    const debate = new DebateMinigame();
+    debate.startDebate(actor.id, target.id, actor.stats, target.stats, '원한의 논쟁');
+    return debate;
+}
+
+/**
+ * 인터랙티브/자동 미니게임 종료 후 공통 후처리 — 우호도 동기화 + 명성 변동 [C-인간관계][11]
+ * success는 actor 기준 승패. message는 UI에서 이미 표시했을 수 있다.
+ */
+export function finishVengeance(
+    store: GameStore,
+    actorId: string,
+    targetId: string,
+    success: boolean,
+): VengeanceOutcome {
+    const actor = store.getOfficer(actorId);
+    if (!actor) return NO_VENGEANCE;
+    const { year, month } = store.getGlobalState().time;
+
+    // 우호도 양방향 동기화
+    const delta = success ? VENGEANCE_SUCCESS_AFFINITY : VENGEANCE_FAIL_AFFINITY;
+    const forward = store.getRelationships(actorId).find(e => e.target === targetId);
+    const reverse = store.getRelationships(targetId).find(e => e.target === actorId);
+    for (const edge of [forward, reverse]) {
+        if (!edge) continue;
+        edge.affinity = Math.max(-100, Math.min(100, edge.affinity + delta));
+        edge.history.push({ year, month, event: 'VENGEANCE', delta });
+    }
+
+    // 명성/악명 변동 [11]: 복수 성공은 명성, 실패는 굴욕 (양쪽 모두 악명은 변동 없음)
+    store.updateOfficer(actorId, {
+        fame: Math.min(9999, actor.fame + (success ? 20 : -10)),
+    });
+
+    return {
+        triggered: true,
+        kind: null,
+        actorId,
+        targetId,
+        success,
+        affinityDelta: delta,
+        targetMoraleHit: success ? VENGEANCE_MORALE_HIT : 0,
+        message: success
+            ? `복수 성사 — ${actor.name}의 명성이 높아졌습니다`
+            : `복수 실패 — ${actor.name}은(는) 굴욕을 삼켰습니다`,
+    };
+}
+
 /**
  * 월간 자유 복수 — 도시가 같은(또는 인접한) 원수 무장 간 월 1회 판정.
  * 엔진 월간 주기에서 호출. [C-인간관계]

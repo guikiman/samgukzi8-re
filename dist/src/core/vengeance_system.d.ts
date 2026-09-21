@@ -12,6 +12,8 @@
  * 카드 선택은 executeInteraction과 동일한 자동 플레이 방식.
  */
 import type { GameStore } from './game_store.js';
+import { DuelMinigame } from './duel_minigame.js';
+import { DebateMinigame } from './debate_minigame.js';
 /** 복수 이벤트 종류 */
 export type VengeanceKind = 'DUEL' | 'DEBATE';
 /** 복수 이벤트 발동 확률 (조우 1회당) */
@@ -65,6 +67,26 @@ export declare function executeVengeance(store: GameStore, actorId: string, targ
  * 전투 시작 시 아군/적군 유닛쌍마다 호출하고, 첫 발동만 채택한다.
  */
 export declare function tryVengeanceOnEncounter(store: GameStore, aId: string, bId: string, roll?: number): VengeanceOutcome;
+/** 복수 판정 결과 — UI에서 플레이어 관여 여부를 결정할 때 사용 */
+export interface VengeanceJudgement {
+    triggered: boolean;
+    kind: VengeanceKind | null;
+    actorId: string | null;
+    targetId: string | null;
+}
+/** 판정만 수행 (실행 없음) — UI가 플레이어 관여 여부를 판단한 뒤 실행 방식을 선택 */
+export declare function judgeVengeanceOnly(store: GameStore, aId: string, bId: string, roll?: number): VengeanceJudgement;
+/**
+ * 복수 이벤트를 새 미니게임 인스턴스로 시작한다 — 인터랙티브 UI용.
+ * 반환된 게임 인스턴스를 UI가 카드 선택을 받아 진행하고,
+ * 종료 후 finishVengeanceWithGame으로 후처리(우호도/명성)를 적용한다.
+ */
+export declare function startVengeanceGame(store: GameStore, actorId: string, targetId: string, kind: VengeanceKind): DuelMinigame | DebateMinigame;
+/**
+ * 인터랙티브/자동 미니게임 종료 후 공통 후처리 — 우호도 동기화 + 명성 변동 [C-인간관계][11]
+ * success는 actor 기준 승패. message는 UI에서 이미 표시했을 수 있다.
+ */
+export declare function finishVengeance(store: GameStore, actorId: string, targetId: string, success: boolean): VengeanceOutcome;
 /**
  * 월간 자유 복수 — 도시가 같은(또는 인접한) 원수 무장 간 월 1회 판정.
  * 엔진 월간 주기에서 호출. [C-인간관계]
