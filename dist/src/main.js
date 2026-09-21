@@ -17,6 +17,7 @@ import { SaveSlotManager } from './core/save_slot_manager.js';
 import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
+import { tryVengeanceOnEncounter } from './core/vengeance_system.js';
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
 // DOM References
@@ -991,6 +992,29 @@ function enterBattleMode() {
     }
     void deployable;
     void enemyUnits;
+    // 복수 이벤트 판정 [32][33][C-인간관계] — 출진 편성에 실제 무장 ID가 있는 경우
+    // 아군×적군 유닛쌍 중 NEMESIS 관계가 조우하면 설전/단기접전 복수 이벤트 발동
+    if (expeditionSource && expeditionTarget && engine) {
+        const storeV = engine['store'];
+        const friendlyIds = (storeV.getCity(expeditionSource)?.officerIds ?? []).slice(0, 4);
+        const enemyOfficerIds = (storeV.getCity(expeditionTarget)?.officerIds ?? []).slice(0, 3);
+        outer: for (const fId of friendlyIds) {
+            for (const eId of enemyOfficerIds) {
+                const outcome = tryVengeanceOnEncounter(storeV, fId, eId);
+                if (outcome.triggered) {
+                    addLog(outcome.message);
+                    // 복수 성공 시 적군 전체 사기 타격 (전투 유닛 반영)
+                    if (outcome.success && outcome.targetMoraleHit > 0) {
+                        for (const eu of enemyUnits) {
+                            eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
+                        }
+                        addLog(`🪫 ${storeV.getCity(expeditionTarget)?.name ?? '적군'} 병력 사기가 흔들립니다`);
+                    }
+                    break outer; // 전투당 복수 이벤트 1회
+                }
+            }
+        }
+    }
     battleFrontend = new BattleFrontend(hexRenderer);
     battleFrontend.setCallbacks({
         onPhaseChange: (phase) => {
@@ -1384,6 +1408,10 @@ function init() {
     // 포로 탈출 이벤트 [131-145]
     engine.subscribe('CAPTIVE_ESCAPED', (event) => {
         addLog(`🏃 포로 탈출: ${event.payload.officerName}이(가) 수용소에서 탈출했습니다`);
+    });
+    // 월간 복수 이벤트 [32][33][C-인간관계]
+    engine.subscribe('VENGEANCE_EVENT', (event) => {
+        addLog(`${event.payload.message}`);
     });
     engine.subscribe('GAME_ENDING', (event) => {
         showEnding(event.payload.ending, event.payload.winner);

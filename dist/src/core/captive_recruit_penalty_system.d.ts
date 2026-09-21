@@ -37,4 +37,24 @@ export interface CaptiveRecruitPenaltyResult {
  * @param recruitedOfficerId 등용당한 무장 ID
  */
 export declare function applyCaptiveRecruitPenalty(store: GameStore, diplomacy: DiplomacyEngine, recruitedFactionId: string, recruitedOfficerId: string): CaptiveRecruitPenaltyResult;
+/** 석방 시 우호도/외교 개선량 */
+export declare const RELEASE_GOODWILL_PEACE_CHANCE = 0.5;
+/** 석방 선포 결과 */
+export interface CaptiveReleaseDiplomacyResult {
+    /** 원소속 세력 ID (없으면 null) */
+    originFactionId: string | null;
+    /** 휴전 성립 여부 */
+    peaceMade: boolean;
+    /** 로그 메시지 목록 */
+    messages: string[];
+}
+/**
+ * 석방 선포 시스템 [341-360] — 포로를 풀어주면 원소속 세력이 goodwill을 갚는다.
+ *
+ *  - 전쟁 중이면 50% 확률로 휴전 성립 (인도적 석방에 대한 화답)
+ *  - 석방한 세력의 평판(reputation) 소폭 상승
+ *
+ * processCaptives의 RELEASE 경로와 플레이어 수동 석방에서 호출한다.
+ */
+export declare function applyCaptiveReleaseDiplomacy(store: GameStore, diplomacy: DiplomacyEngine, releaserFactionId: string, releasedOfficerId: string): CaptiveReleaseDiplomacyResult;
 //# sourceMappingURL=captive_recruit_penalty_system.d.ts.map

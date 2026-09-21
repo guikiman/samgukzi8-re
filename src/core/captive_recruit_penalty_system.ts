@@ -113,3 +113,61 @@ export function applyCaptiveRecruitPenalty(
 
     return result;
 }
+
+/** 석방 시 우호도/외교 개선량 */
+export const RELEASE_GOODWILL_PEACE_CHANCE = 0.5;
+
+/** 석방 선포 결과 */
+export interface CaptiveReleaseDiplomacyResult {
+    /** 원소속 세력 ID (없으면 null) */
+    originFactionId: string | null;
+    /** 휴전 성립 여부 */
+    peaceMade: boolean;
+    /** 로그 메시지 목록 */
+    messages: string[];
+}
+
+/**
+ * 석방 선포 시스템 [341-360] — 포로를 풀어주면 원소속 세력이 goodwill을 갚는다.
+ *
+ *  - 전쟁 중이면 50% 확률로 휴전 성립 (인도적 석방에 대한 화답)
+ *  - 석방한 세력의 평판(reputation) 소폭 상승
+ *
+ * processCaptives의 RELEASE 경로와 플레이어 수동 석방에서 호출한다.
+ */
+export function applyCaptiveReleaseDiplomacy(
+    store: GameStore,
+    diplomacy: DiplomacyEngine,
+    releaserFactionId: string,
+    releasedOfficerId: string,
+): CaptiveReleaseDiplomacyResult {
+    const messages: string[] = [];
+    const result: CaptiveReleaseDiplomacyResult = { originFactionId: null, peaceMade: false, messages };
+
+    const officer = store.getOfficer(releasedOfficerId);
+    if (!officer) return result;
+
+    const originFactionId = getCapturedOriginFaction(store, releasedOfficerId);
+    if (!originFactionId || originFactionId === releaserFactionId) return result;
+    result.originFactionId = originFactionId;
+
+    const originName = store.getFaction(originFactionId)?.name ?? originFactionId;
+
+    // 전쟁 중이면 확률적 휴전 — 석방의 인도적 화답
+    if (diplomacy.getRelation(releaserFactionId, originFactionId) === FactionRelation.WAR
+        && Math.random() < RELEASE_GOODWILL_PEACE_CHANCE) {
+        const r = diplomacy.makePeace(releaserFactionId, originFactionId);
+        if (r.success) {
+            result.peaceMade = true;
+            messages.push(`🕊️ [외교] ${originName}: 포로 석방에 대한 화답으로 휴전이 성립되었습니다`);
+        }
+    }
+
+    // 석방한 세력 평판 상승 [212 계열 — 명성 시스템]
+    const releaser = store.getFaction(releaserFactionId);
+    if (releaser) {
+        store.updateFaction(releaserFactionId, { reputation: Math.min(100, releaser.reputation + 2) });
+    }
+
+    return result;
+}

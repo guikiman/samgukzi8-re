@@ -12,8 +12,8 @@
 
 import type { GameStore } from './game_store.js';
 import { OfficerStatus } from './types.js';
-import { applyCaptiveRecruitPenalty } from './captive_recruit_penalty_system.js';
-import { isCaptive } from './captive_escape_system.js';
+import { applyCaptiveRecruitPenalty, applyCaptiveReleaseDiplomacy } from './captive_recruit_penalty_system.js';
+import { isCaptive, getCapturedOriginFaction } from './captive_escape_system.js';
 import type { DiplomacyEngine } from './diplomacy_engine.js';
 
 export type CaptiveDecision = 'RECRUIT' | 'EXECUTE' | 'RELEASE';
@@ -46,6 +46,32 @@ export function judgeExecution(cruel: boolean, roll: number): boolean {
 export function judgeCaptiveRecruit(charisma: number, roll: number): boolean {
     const chance = Math.min(0.95, 0.5 + (charisma - 60) / 200);
     return roll < chance;
+}
+
+/**
+ * AI 포로 외교 판단 [24][341-360] — 등용 시 원수화 페널티를 감수할 가치가 있는지
+ *
+ * 페널티 회피 유인:
+ *  - 이미 전쟁 중인 원소속 세력 → 페널티 추가 부담 없음 (등용 유리)
+ *  - 포로 무장이 고능력(능력치 합 350 이상) → 페널티를 감수할 가치
+ *  - 온건형 군주는 관계 악화를 꺼려 석방 선호
+ */
+export function judgeCaptiveDiplomacy(
+    alreadyAtWar: boolean,
+    statTotal: number,
+    cruel: boolean,
+    roll: number,
+): boolean {
+    if (alreadyAtWar) return true;       // 전쟁 중이면 원수화 부담 없음
+    if (statTotal >= 350) return true;   // 고능력 포로는 페널티 감수하고 등용
+    // 그 외: 잔혹형(무모한) 군주는 60% 확률로 무시, 온건형은 대부분 회피
+    return roll < (cruel ? 0.6 : 0.2);
+}
+
+/** 통일 전쟁 상태 확인 — diplomacy가 있으면 현재 관계가 WAR인지 */
+function isAtWarWith(diplomacy: DiplomacyEngine | null | undefined, aId: string, bId: string): boolean {
+    if (!diplomacy) return false;
+    return diplomacy.getRelation(aId, bId) === 'war';
 }
 
 /**
@@ -96,7 +122,15 @@ export function processCaptives(
         }
 
         const recruitRoll = Math.random();
-        if (judgeCaptiveRecruit(leader.stats.charisma, recruitRoll) && cities.length > 0) {
+        // AI 외교 판단 [341-360]: 원소속 세력과의 관계 부담을 고려해 등용 가능 여부 결정
+        const originForJudge = getCapturedOriginFaction(store, officer.id);
+        const warBurden = originForJudge ? isAtWarWith(diplomacy, factionId, originForJudge) : true;
+        const statTotal = officer.stats.leadership + officer.stats.might + officer.stats.intelligence
+            + officer.stats.politics + officer.stats.charisma;
+        const diplomacyRoll = Math.random();
+        const diplomacyAllows = judgeCaptiveDiplomacy(warBurden, statTotal, cruel, diplomacyRoll);
+
+        if (diplomacyAllows && judgeCaptiveRecruit(leader.stats.charisma, recruitRoll) && cities.length > 0) {
             // 등용: 가장 약한 아군 도시에 배치
             const targetCity = [...cities].sort((a, b) => a.development - b.development)[0];
             store.updateOfficer(officer.id, {
@@ -125,15 +159,21 @@ export function processCaptives(
             });
             messages.push(outcomes[outcomes.length - 1].message);
         } else {
-            // 실패: 재야 석방 (충성도 0 유지 — 플레이어 등용 대상으로 전환)
+            // 실패/기피: 재야 석방 (충성도 0 유지 — 플레이어 등용 대상으로 전환)
+            const releaseMessages: string[] = [`🕊️ ${officer.name} 포로를 풀어주었다`];
+            // 석방 외교 효과 [341-360]: 원소속 세력이 살아있으면 관계 개선 (전쟁 중이면 휴전 시도)
+            if (diplomacy) {
+                const releaseDiplo = applyCaptiveReleaseDiplomacy(store, diplomacy, factionId, officer.id);
+                releaseMessages.push(...releaseDiplo.messages);
+            }
             outcomes.push({
                 officerId: officer.id,
                 officerName: officer.name,
                 decision: 'RELEASE',
                 success: false,
-                message: `🕊️ ${officer.name} 포로를 풀어주었다`,
+                message: releaseMessages[0],
             });
-            messages.push(outcomes[outcomes.length - 1].message);
+            messages.push(...releaseMessages);
         }
     }
 

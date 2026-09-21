@@ -17,6 +17,7 @@ import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
+import { processMonthlyVengeance } from './vengeance_system.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -263,6 +264,18 @@ export class GameEngine {
                     id: `captive_escape_${rec.officerId}_${Date.now()}`,
                     type: 'CAPTIVE_ESCAPED',
                     payload: { officerId: rec.officerId, officerName: rec.officerName, fromCityId: rec.fromCityId },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            // 월간 복수 이벤트 — 같은 도시/전장의 원수 무장 간 설전·단기접전 [32][33][C-인간관계]
+            const vengeanceOutcomes = processMonthlyVengeance(this.store);
+            for (const v of vengeanceOutcomes) {
+                console.log(`[Engine] ${v.message}`);
+                this.emitEvent({
+                    id: `vengeance_${v.actorId}_${Date.now()}`,
+                    type: 'VENGEANCE_EVENT',
+                    payload: { kind: v.kind, actorId: v.actorId, targetId: v.targetId, success: v.success, message: v.message },
                     timestamp: Date.now(),
                     turn: this.store.getGlobalState().turnCount,
                 });

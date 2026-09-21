@@ -30,6 +30,15 @@ export declare function judgeExecution(cruel: boolean, roll: number): boolean;
 /** 포로 등용 성공 확률 — 기본 50% + 군주 카리스마 보정 (최대 +0.3) */
 export declare function judgeCaptiveRecruit(charisma: number, roll: number): boolean;
 /**
+ * AI 포로 외교 판단 [24][341-360] — 등용 시 원수화 페널티를 감수할 가치가 있는지
+ *
+ * 페널티 회피 유인:
+ *  - 이미 전쟁 중인 원소속 세력 → 페널티 추가 부담 없음 (등용 유리)
+ *  - 포로 무장이 고능력(능력치 합 350 이상) → 페널티를 감수할 가치
+ *  - 온건형 군주는 관계 악화를 꺼려 석방 선호
+ */
+export declare function judgeCaptiveDiplomacy(alreadyAtWar: boolean, statTotal: number, cruel: boolean, roll: number): boolean;
+/**
  * AI 세력의 포로 목록 처리
  * @param factionId 포로를 처리하는 (공성 승리한) 세력 ID
  * @param capturedOfficerIds processBattleSpoils가 반환한 포획 무장 ID 목록
