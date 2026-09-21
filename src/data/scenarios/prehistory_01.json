@@ -10,13 +10,13 @@
             "name": "하진",
             "capital": "낙양",
             "leader_id": "he_jin",
-            "officer_count": 
+            "officer_count": 12
         },
         {
             "name": "장각",
             "capital": "거록",
             "leader_id": "zhang_jiao",
-            "officer_count": 
+            "officer_count": 15
         }
     ],
     "special_conditions": {

@@ -11,6 +11,9 @@ import { gameStore } from './game_store.js';
 import { CommandQueue, DomesticCommand, TrainingCommand, RecruitmentCommand, MovementCommand, RestCommand, deserializeCommand } from './command_system.js';
 import { TurnScheduler, AITurnProcessor, TurnLifecycleManager } from './turn_scheduler.js';
 import { getBootstrap } from './bootstrap.js';
+import { FactionAI } from './faction_ai_monthly.js';
+import { FactionFateSystem } from './faction_fate_system.js';
+import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -23,6 +26,9 @@ export class GameEngine {
             await this.aiProcessor.processSingleOfficer(task.officerId);
         }, { chunkSize: 50 });
         this.lifecycleManager = new TurnLifecycleManager(this.store);
+        this.factionAI = new FactionAI(this.store);
+        this.fateSystem = new FactionFateSystem(this.store);
+        this.loyaltySystem = new OfficerLoyaltySystem(this.store);
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -200,7 +206,54 @@ export class GameEngine {
             if (this.bootstrap) {
                 this.bootstrap.processTurnStart();
             }
+            // 세력 AI 월간 자율 행동 (내정/징병/출진) [201]
+            const aiReports = this.factionAI.runMonthly();
+            for (const r of aiReports) {
+                if (r.actions.length > 0) {
+                    console.log(`[FactionAI] ${r.factionName}: ${r.actions.join(', ')}`);
+                    this.emitEvent({
+                        id: `faction_ai_${r.factionId}_${Date.now()}`,
+                        type: 'FACTION_AI_ACTION',
+                        payload: { factionId: r.factionId, actions: r.actions, conqueredCityId: r.conqueredCityId },
+                        timestamp: Date.now(),
+                        turn: this.store.getGlobalState().turnCount,
+                    });
+                }
+            }
             this.processMonthlyMaintenance();
+            // 무장 배신 판정 (AI 세력 무장) [24]
+            const defections = this.loyaltySystem.processMonthlyDefections();
+            for (const d of defections) {
+                console.log(`[Engine] 배신: ${d.officerName} (${d.reason})`);
+                this.emitEvent({
+                    id: `defection_${d.officerId}_${Date.now()}`,
+                    type: 'OFFICER_DEFECTED',
+                    payload: { officerId: d.officerId, officerName: d.officerName, reason: d.reason },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            // 세력 운명 판정 — 멸망/통일 [213]
+            const fateReport = this.fateSystem.checkFates();
+            for (const name of fateReport.destroyedFactionNames) {
+                console.log(`[Engine] 세력 멸망: ${name}`);
+                this.emitEvent({
+                    id: `faction_destroyed_${Date.now()}`,
+                    type: 'FACTION_DESTROYED',
+                    payload: { factionName: name },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            if (fateReport.ending) {
+                this.emitEvent({
+                    id: `game_ending_${Date.now()}`,
+                    type: 'GAME_ENDING',
+                    payload: { ending: fateReport.ending, winner: fateReport.winnerFactionName },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             this.store.advanceTime();
             console.log('[Engine] === Turn end ===');
         }
@@ -262,6 +315,26 @@ export class GameEngine {
                 gold: faction.gold + goldIncome,
                 food: faction.food + foodIncome,
             });
+            // 도시 자금에 월 수입 유입 [E1-361: 거시 경제] — 내정 재원 순환
+            // 1) 발전도 연동 수입 재계산: 상업↑ → goldIncome↑, 농업↑ → foodIncome↑
+            // 2) 상업 수익(골드 수입의 3배)은 도시 자금에 직접 귀속, 전액은 세력 국고로도 입금
+            //    → 개발(상업+)할수록 다음 달 수입이 늘어나는 선순환
+            for (const c of cities) {
+                const ds = c.developmentStats;
+                const newGoldIncome = 90 + Math.floor(ds.commerce);
+                const newFoodIncome = 200 + Math.floor(ds.farming * 2.62);
+                // 발전도 성장분: 매월 상업+3, 농업+2 자연 성장 (개발 투자 시 추가)
+                const grownCommerce = Math.min(ds.maxCommerce, ds.commerce + 3);
+                const grownFarming = Math.min(ds.maxFarming, ds.farming + 2);
+                const grownGoldIncome = 90 + Math.floor(grownCommerce);
+                this.store.updateCity(c.id, {
+                    goldIncome: grownGoldIncome,
+                    foodIncome: 200 + Math.floor(grownFarming * 2.62),
+                    developmentStats: { ...ds, commerce: grownCommerce, farming: grownFarming },
+                    funds: c.funds + grownGoldIncome * 3,
+                });
+                this.store.updateFaction(faction.id, { gold: faction.gold + newGoldIncome });
+            }
         }
         const officers = this.store.getAllOfficers();
         const currentYear = this.store.getGlobalState().time.year;
@@ -337,7 +410,7 @@ export class GameEngine {
             return;
         }
         try {
-            this.worker = new Worker(new URL('./ai_worker.ts', import.meta.url), { type: 'module' });
+            this.worker = new Worker(new URL('./ai_worker.js', import.meta.url), { type: 'module' });
             this.worker.onmessage = (e) => {
                 const response = e.data;
                 const pending = this.workerPromises.get(response.id);
@@ -429,6 +502,10 @@ export class GameEngine {
     load(data) {
         this.store.restoreSnapshot(data.state);
         this.store.setGlobalState(data.globalState);
+        // FSM을 세이브 시점 페이즈로 동기화 (onEnter 부작용 없이 상태만 복원)
+        if (data.globalState.phase && data.globalState.phase !== this.currentPhase) {
+            this.currentPhase = data.globalState.phase;
+        }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {
             this.commandQueue.enqueue(deserializeCommand(cmdData));

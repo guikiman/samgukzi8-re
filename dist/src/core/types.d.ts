@@ -117,6 +117,14 @@ export interface Officer {
     hp: number;
     maxHp: number;
     injuries: number;
+    runtime: {
+        isAlive: boolean;
+        factionId: string | null;
+        locationId: string;
+        loyalty: number;
+    };
+    originClanId?: string;
+    appearancePoolId?: string;
 }
 export interface FactionPolicy {
     recruitmentFocus: number;
@@ -179,6 +187,9 @@ export interface City {
     id: CityID;
     name: string;
     hexCoord: HexCoord;
+    /** 중국 전도 상의 위치 (정규화 0~1). 미지정 시 hexCoord 기반으로 계산 */
+    mapX?: number;
+    mapY?: number;
     population: number;
     defense: number;
     maxDefense: number;

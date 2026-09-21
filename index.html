@@ -6,19 +6,21 @@
 <title>삼국지 8 리메이크</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-season="spring">
 <div id="game-container">
     <div id="top-bar">
-        <div id="game-title">삼국지 8 리메이크</div>
+        <div id="game-title"><span class="title-cn">三國志</span><span class="title-sub">VIII REMAKE</span></div>
         <div id="game-info">
-            <span id="turn-display">턴 1</span>
-            <span id="date-display">184년 1월</span>
-            <span id="phase-display">TITLE</span>
+            <span id="turn-display" class="stat-chip">턴 1</span>
+            <span id="date-display" class="stat-chip">184년 1월</span>
+            <span id="phase-display" class="stat-chip">TITLE</span>
         </div>
         <div id="controls">
             <button id="btn-start" class="game-btn">게임 시작</button>
             <button id="btn-pause" class="game-btn" disabled>일시정지</button>
             <button id="btn-save" class="game-btn" disabled>저장</button>
+            <button id="btn-slots" class="game-btn" disabled>💾 슬롯</button>
+            <button id="btn-report" class="game-btn" disabled>📊 보고</button>
             <button id="btn-battle" class="game-btn" disabled>⚔️ 전투</button>
         </div>
     </div>
@@ -44,7 +46,7 @@
                 </div>
             </div>
             <div id="log-panel" class="panel">
-                <h3>로그</h3>
+                <h3>기록</h3>
                 <div id="log-content"><div class="log-entry">엔진 준비 완료</div></div>
             </div>
         </div>
@@ -52,6 +54,142 @@
     <div id="bottom-bar">
         <div id="status-text">초기화 중...</div>
         <div id="fps-display">FPS: --</div>
+    </div>
+</div>
+
+<!-- 타이틀 스크린 오버레이 -->
+<div id="title-screen">
+    <canvas id="title-particles"></canvas>
+    <div class="title-frame">
+        <div class="title-ornament top"><span class="orn-line"></span><span class="orn-gem">◆</span><span class="orn-line"></span></div>
+        <h1 class="game-logo"><span class="logo-cn">三國志</span><span class="logo-num">VIII REMAKE</span></h1>
+        <div class="logo-sub">乱世に立つ — 삼국지 8 리메이크</div>
+        <nav class="title-menu">
+            <button id="btn-title-new" class="title-btn primary">
+                <span class="btn-label">새로운 시작</span>
+                <span class="btn-desc">시나리오를 선택하여 새로운 역사를 시작</span>
+            </button>
+            <button id="btn-title-continue" class="title-btn" style="display:none;">
+                <span class="btn-label">이어하기</span>
+                <span class="btn-desc">저장된 세이브 불러오기</span>
+            </button>
+        </nav>
+        <div class="title-ornament bottom"><span class="orn-line"></span><span class="orn-gem">◆</span><span class="orn-line"></span></div>
+        <div class="title-footer">RTK8 REMAKE WEB PROJECT · v1.0</div>
+    </div>
+</div>
+
+<!-- 도시 상세 패널 (전도 클릭 시) -->
+<div id="city-detail-panel" style="display:none;">
+    <div class="cdp-header">
+        <div class="cdp-title-wrap">
+            <span id="cdp-city-name" class="cdp-city-name">-</span>
+            <span id="cdp-faction-badge" class="cdp-faction-badge">-</span>
+        </div>
+        <button id="cdp-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div class="cdp-section">
+        <div class="cdp-section-title">內政 — 내정치</div>
+        <div id="cdp-stats" class="cdp-stats"></div>
+    </div>
+    <div class="cdp-section">
+        <div class="cdp-section-title">武將 — 무장 목록</div>
+        <div id="cdp-officers" class="cdp-officers"></div>
+    </div>
+    <div class="cdp-section" id="cdp-actions-section">
+        <div class="cdp-section-title">命令 — 내정 명령</div>
+        <div id="cdp-actions" class="cdp-actions">
+            <button class="cdp-action-btn" data-action="recruit" title="골드를 소모해 병사를 모집합니다">징병</button>
+            <button class="cdp-action-btn" data-action="train" title="골드를 소모해 병사 사기를 높입니다">훈련</button>
+            <button class="cdp-action-btn" data-action="patrol" title="치안을 높여 반란 위험을 낮춥니다">순찰</button>
+            <button class="cdp-action-btn" data-action="develop" title="상업·농업을 동시에 개발합니다">개발</button>
+        </div>
+        <div id="cdp-action-result" class="cdp-action-result"></div>
+    </div>
+    <div class="cdp-section" id="cdp-expedition-section" style="display:none;">
+        <div class="cdp-section-title">出征 — 出陣</div>
+        <div id="cdp-expedition-info" class="cdp-expedition-info"></div>
+        <div id="cdp-expedition-targets" class="cdp-expedition-targets"></div>
+    </div>
+    <div class="cdp-section" id="cdp-recruit-section" style="display:none;">
+        <div class="cdp-section-title">登用 — 登用</div>
+        <div id="cdp-recruit-info" class="cdp-expedition-info">재야 무장을 등용합니다</div>
+        <div id="cdp-recruit-targets" class="cdp-expedition-targets"></div>
+    </div>
+</div>
+
+<!-- 월간 보고서 패널 -->
+<div id="monthly-report-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name" id="mr-title">月報 — 월간 보고</span>
+        <button id="mr-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div class="cdp-section">
+        <div class="cdp-section-title">財政 — 재정</div>
+        <div id="mr-finance" class="mr-finance"></div>
+    </div>
+    <div class="cdp-section">
+        <div class="cdp-section-title">都市 — 도시 현황</div>
+        <div id="mr-cities" class="mr-cities"></div>
+    </div>
+    <div class="cdp-section">
+        <div class="cdp-section-title">他勢力 — 타세력 동향</div>
+        <div id="mr-factions" class="mr-factions"></div>
+    </div>
+</div>
+
+<!-- 세이브 슬롯 패널 [17][212] -->
+<div id="save-slots-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name">存檔 — 세이브 슬롯</span>
+        <button id="ss-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div id="ss-slot-list" class="ss-slot-list"></div>
+    <div class="ss-hint">슬롯 클릭 = 저장 · 항목의 불러오기 = 해당 슬롯에서 시작</div>
+</div>
+
+<!-- 엔딩 화면 -->
+<div id="ending-screen" style="display:none;">
+    <canvas id="ending-particles"></canvas>
+    <div class="flow-frame">
+        <div class="flow-header">
+            <h1 id="ending-title" class="flow-title">—</h1>
+            <div id="ending-sub" class="flow-sub">—</div>
+        </div>
+        <div id="ending-body" class="ending-body"></div>
+        <div class="flow-footer">
+            <button id="btn-ending-title" class="title-btn small">타이틀로</button>
+        </div>
+    </div>
+</div>
+
+<!-- 시나리오 선택 오버레이 [9] -->
+<div id="scenario-screen" class="flow-screen" style="display:none;">
+    <canvas id="scenario-particles"></canvas>
+    <div class="flow-frame">
+        <div class="flow-header">
+            <h2 class="flow-title">시나리오 선택</h2>
+            <div class="flow-sub">시대를 고르십시오 — 乱世の選択</div>
+        </div>
+        <div id="scenario-list" class="scenario-list"></div>
+        <div class="flow-footer">
+            <button id="btn-scenario-back" class="title-btn small">← 타이틀로</button>
+        </div>
+    </div>
+</div>
+
+<!-- 세력 선택 오버레이 [9] -->
+<div id="faction-screen" class="flow-screen" style="display:none;">
+    <canvas id="faction-particles"></canvas>
+    <div class="flow-frame">
+        <div class="flow-header">
+            <h2 class="flow-title">세력 선택</h2>
+            <div class="flow-sub" id="faction-screen-sub">세력을 고르십시오 — 势力の選択</div>
+        </div>
+        <div id="faction-list" class="faction-list"></div>
+        <div class="flow-footer">
+            <button id="btn-faction-back" class="title-btn small">← 시나리오 선택으로</button>
+        </div>
     </div>
 </div>
 <script type="module" src="dist/src/main.js"></script>

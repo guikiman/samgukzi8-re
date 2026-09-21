@@ -104,6 +104,12 @@ export class OfficerBuilder {
       hp: this.hp,
       maxHp: this.maxHp,
       injuries: this.injuries,
+      runtime: {
+        isAlive: this.deathYear === null,
+        factionId: this.factionId ?? null,
+        locationId: this.cityId ?? '',
+        loyalty: this.loyalty,
+      },
     };
   }
 }

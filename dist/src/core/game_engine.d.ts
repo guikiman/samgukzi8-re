@@ -22,6 +22,9 @@ export declare class GameEngine {
     private worker;
     private workerPromises;
     private bootstrap;
+    private factionAI;
+    private fateSystem;
+    private loyaltySystem;
     private isProcessingTurn;
     constructor(store?: GameStore);
     private initBootstrap;

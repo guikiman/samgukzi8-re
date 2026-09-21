@@ -536,6 +536,12 @@ export class RuntimeModLoader {
                         hp: 100,
                         maxHp: 100,
                         injuries: 0,
+                        runtime: {
+                            isAlive: true,
+                            factionId: o.factionId ?? null,
+                            locationId: o.cityId ?? '',
+                            loyalty: o.loyalty ?? 50,
+                        },
                     });
                 }
                 stats.officersLoaded++;

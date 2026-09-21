@@ -1,0 +1,136 @@
+/**
+ * 세력 AI — 월간 자율 행동 [201][K-고급 AI]
+ *
+ * executeTurn에서 호출되며, 플레이어 세력을 제외한 모든 세력에 대해:
+ * 1) 내정: 도시 자금이 충분하면 개발 (developmentStats 상승)
+ * 2) 징병: 병력(development)이 적으면 모집
+ * 3) 출진: 병력 우위 + 인접 적 도시가 있으면 확률적 공성 (도시 점령)
+ *
+ * 성향(군주 personality)에 따라 공격성이 달라진다.
+ */
+
+import type { GameStore } from './game_store.js';
+import type { City, Faction } from './types.js';
+import { assembleReinforcements } from './reinforcement_system.js';
+
+/** 전도 정규화 좌표 기반 인접 판정 거리 (main.ts의 ADJACENT_DIST와 동일 기준) */
+const ADJACENT_DIST = 0.16;
+
+/** 군주 성향별 공격성 (출진 확률 가중) */
+const AGGRESSION: Record<string, number> = {
+    AGGRESSIVE: 0.75,
+    AMBITIOUS: 0.55,
+    CALM: 0.25,
+    CAUTIOUS: 0.15,
+    LOYAL: 0.2,
+    TIMID: 0.05,
+};
+
+export interface FactionAIReport {
+    factionId: string;
+    factionName: string;
+    actions: string[];
+    conqueredCityId: string | null;
+}
+
+export class FactionAI {
+    constructor(private store: GameStore) {}
+
+    /** 월간 세력 AI 실행 — 플레이어 세력 제외 */
+    runMonthly(): FactionAIReport[] {
+        const gs = this.store.getGlobalState();
+        const reports: FactionAIReport[] = [];
+
+        for (const faction of this.store.getAllFactions()) {
+            if (faction.id === gs.playerFactionId) continue;
+            reports.push(this.runFaction(faction));
+        }
+        return reports;
+    }
+
+    private runFaction(faction: Faction): FactionAIReport {
+        const actions: string[] = [];
+        let conqueredCityId: string | null = null;
+        const leader = faction.leaderId ? this.store.getOfficer(faction.leaderId) : null;
+        const aggression = AGGRESSION[leader?.personality ?? 'CALM'] ?? 0.25;
+
+        const cities = this.store.getCitiesByFaction(faction.id);
+        if (cities.length === 0) {
+            return { factionId: faction.id, factionName: faction.name, actions: ['소속 도시 없음'], conqueredCityId: null };
+        }
+
+        // 1) 내정: 도시 자금 300 이상이면 개발 (상업/농업 교대)
+        for (const city of cities) {
+            if (city.funds >= 300) {
+                const ds = { ...city.developmentStats };
+                if (city.id.charCodeAt(city.id.length - 1) % 2 === 0) {
+                    ds.commerce = Math.min(ds.maxCommerce, ds.commerce + 4);
+                    ds.farming = Math.min(ds.maxFarming, ds.farming + 2);
+                } else {
+                    ds.commerce = Math.min(ds.maxCommerce, ds.commerce + 2);
+                    ds.farming = Math.min(ds.maxFarming, ds.farming + 4);
+                }
+                this.store.updateCity(city.id, { funds: city.funds - 250, developmentStats: ds });
+                actions.push(`${city.name} 개발 (상${ds.commerce}/농${ds.farming})`);
+            }
+        }
+
+        // 2) 징병: 병력 200 미만 도시는 자금 200으로 병력 +600
+        for (const city of cities) {
+            if (city.development < 200 && city.funds >= 200) {
+                this.store.updateCity(city.id, {
+                    funds: city.funds - 200,
+                    development: city.development + 600,
+                });
+                actions.push(`${city.name} 징병 (+600)`);
+            }
+        }
+
+        // 3) 출진: 병력 우위 + 인접 적 도시 + 성향 확률
+        const attackCities = cities.filter(c => c.development >= 300);
+        for (const src of attackCities) {
+            if (Math.random() > aggression) continue;
+            const targets = this.store.getAllCities().filter(c => {
+                if (!c.ownerId || c.ownerId === faction.id) return false;
+                const dx = (c.mapX ?? 0) - (src.mapX ?? 0);
+                const dy = (c.mapY ?? 0) - (src.mapY ?? 0);
+                return Math.hypot(dx, dy) <= ADJACENT_DIST;
+            });
+            if (targets.length === 0) continue;
+
+            // 가장 약한 표적 선택 + 병력 우위 확인
+            targets.sort((a, b) => a.development - b.development);
+            const target = targets[0];
+            const attackPower = src.development + src.defense;
+            const defensePower = target.development + target.defense * 1.5;
+            if (attackPower < defensePower * 1.2) continue; // 우위 아니면 보수적
+
+            // 인접 아군 도시 증원 — 방어 도시 수비력 가산 [107]
+            const st = this.store.getState();
+            const reinf = target.ownerId
+                ? assembleReinforcements(
+                    target.id, target.ownerId,
+                    this.store.getAllCities(), Object.values(st.officers), Object.values(st.armies),
+                )
+                : { totalTroops: 0, contingents: [], officerIds: [], defenseCityId: target.id };
+            const reinfPower = Math.floor(reinf.totalTroops / 20);
+            const defensePower2 = defensePower + reinfPower;
+
+            // 공성 판정: 공격력 비율 + 난수 (증원 반영)
+            const odds = attackPower / (attackPower + defensePower2);
+            const won = Math.random() < odds;
+            if (won) {
+                this.store.updateCity(target.id, { ownerId: faction.id, defense: Math.max(5, Math.floor(target.defense * 0.4)) });
+                this.store.updateCity(src.id, { development: Math.max(0, Math.floor(src.development * 0.85)) });
+                conqueredCityId = target.id;
+                actions.push(`${target.name} 점령!`);
+            } else {
+                this.store.updateCity(src.id, { development: Math.max(0, Math.floor(src.development * 0.85)) });
+                actions.push(`${target.name} 공성 실패`);
+            }
+            break; // 세력당 월 1회 출진
+        }
+
+        return { factionId: faction.id, factionName: faction.name, actions, conqueredCityId };
+    }
+}

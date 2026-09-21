@@ -1,0 +1,113 @@
+[
+  {
+    "id": "01",
+    "title_kr": "황건적의 난",
+    "title_en": "The Yellow Turban Rebellion",
+    "start_date": "184-01",
+    "description": "한나라의 쇠락과 함께 장각이 이끄는 황건적이 봉기하여 천하가 혼란에 빠집니다.",
+    "difficulty": 1,
+    "factions": [
+      { "name": "하진", "capital": "낙양", "leader_id": "he_jin", "color": "#a8783c" },
+      { "name": "장각", "capital": "거록", "leader_id": "zhang_jiao", "color": "#d8b93a" }
+    ],
+    "special_conditions": {
+      "victory": "황건적 세력의 전멸 또는 낙양 수호",
+      "historical_mode": true
+    },
+    "status": "active"
+  },
+  {
+    "id": "02",
+    "title_kr": "반동탁 연합",
+    "title_en": "Coalition against Dong Zhuo",
+    "start_date": "190-01",
+    "description": "동탁이 낙양을 장악하고 헌제를 옹립하자, 조조의 격문에 각지의 제후들이 반동탁 연합을 결성합니다.",
+    "difficulty": 2,
+    "factions": [
+      { "name": "동탁", "capital": "낙양", "leader_id": "dong_zhuo", "color": "#8a4a3a" },
+      { "name": "원소", "capital": "업", "leader_id": "yuan_shao", "color": "#5a6a9a" },
+      { "name": "조조", "capital": "진류", "leader_id": "cao_cao", "color": "#2a5a8a" },
+      { "name": "손견", "capital": "장사", "leader_id": "sun_jian", "color": "#b04a2a" }
+    ],
+    "special_conditions": {
+      "victory": "연합 해체 후 중원 패권 장악",
+      "historical_mode": true
+    },
+    "status": "active"
+  },
+  {
+    "id": "03",
+    "title_kr": "군웅할거",
+    "title_en": "Warlords Divide the Land",
+    "start_date": "194-01",
+    "description": "여포의 선전포고와 조조의 연주 침공으로 연합은 완전히 해체되고, 각지의 군웅들이 생존을 걸고 다툽니다.",
+    "difficulty": 2,
+    "factions": [
+      { "name": "조조", "capital": "연주", "leader_id": "cao_cao", "color": "#2a5a8a" },
+      { "name": "유비", "capital": "서주", "leader_id": "liu_bei", "color": "#4a9a5a" },
+      { "name": "여포", "capital": "하비", "leader_id": "lv_bu", "color": "#9a3a5a" },
+      { "name": "손책", "capital": "여강", "leader_id": "sun_ce", "color": "#b04a2a" },
+      { "name": "원술", "capital": "수춘", "leader_id": "yuan_shu", "color": "#7a5a9a" }
+    ],
+    "special_conditions": {
+      "victory": "군웅 난립 속에서 중원 통일",
+      "historical_mode": true
+    },
+    "status": "active"
+  },
+  {
+    "id": "04",
+    "title_kr": "관도 대전",
+    "title_en": "Battle of Guandu",
+    "start_date": "200-01",
+    "description": "북방의 패자 원소와 중원의 조조, 천하의 주도권을 건 대결이 관도에서 시작됩니다.",
+    "difficulty": 3,
+    "factions": [
+      { "name": "조조", "capital": "허창", "leader_id": "cao_cao", "color": "#2a5a8a" },
+      { "name": "원소", "capital": "업", "leader_id": "yuan_shao", "color": "#5a6a9a" },
+      { "name": "손책", "capital": "오", "leader_id": "sun_ce", "color": "#b04a2a" },
+      { "name": "유비", "capital": "여남", "leader_id": "liu_bei", "color": "#4a9a5a" }
+    ],
+    "special_conditions": {
+      "victory": "관도 결전 승리 후 화북 통일",
+      "historical_mode": true
+    },
+    "status": "active"
+  },
+  {
+    "id": "05",
+    "title_kr": "삼분천하",
+    "title_en": "Three Kingdoms Divided",
+    "start_date": "207-01",
+    "description": "삼고초려로 제갈량을 맞이한 유비, 강동을 안정시킨 손권, 화북을 통일한 조조. 천하는 삼분되기 직전입니다.",
+    "difficulty": 3,
+    "factions": [
+      { "name": "조조", "capital": "허창", "leader_id": "cao_cao", "color": "#2a5a8a" },
+      { "name": "손권", "capital": "건업", "leader_id": "sun_quan", "color": "#b04a2a" },
+      { "name": "유비", "capital": "신야", "leader_id": "liu_bei", "color": "#4a9a5a" }
+    ],
+    "special_conditions": {
+      "victory": "적벽 대전 후 삼국 정립 완성",
+      "historical_mode": true
+    },
+    "status": "active"
+  },
+  {
+    "id": "06",
+    "title_kr": "출사표",
+    "title_en": "The Northern Expeditions",
+    "start_date": "234-01",
+    "description": "제갈량이 출사표를 올리고 오장원에서 북벌을 개시합니다. 옛 한나라의 부흥을 꿈꾸는 마지막 대원정입니다.",
+    "difficulty": 4,
+    "factions": [
+      { "name": "촉", "capital": "한중", "leader_id": "liu_bei", "color": "#4a9a5a" },
+      { "name": "위", "capital": "낙양", "leader_id": "cao_cao", "color": "#2a5a8a" },
+      { "name": "오", "capital": "건업", "leader_id": "sun_quan", "color": "#b04a2a" }
+    ],
+    "special_conditions": {
+      "victory": "북벌 성공 시 한실 부흥",
+      "historical_mode": true
+    },
+    "status": "active"
+  }
+]

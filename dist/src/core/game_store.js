@@ -103,11 +103,20 @@ class GameStore {
                 if (fac) {
                     this.state.factions[oldOwner] = { ...fac, cities: fac.cities.filter(c => c !== id) };
                 }
+                // byFaction 도시 인덱스 동기화 — getCitiesByFaction 정확성 [결함 수정]
+                const idx = this.state.byFaction.cities[oldOwner];
+                if (idx) {
+                    this.state.byFaction.cities[oldOwner] = idx.filter(c => c !== id);
+                }
             }
             if (newOwner) {
                 const fac = this.state.factions[newOwner];
                 if (fac && !fac.cities.includes(id)) {
                     this.state.factions[newOwner] = { ...fac, cities: [...fac.cities, id] };
+                }
+                const idx = this.state.byFaction.cities[newOwner];
+                if (idx && !idx.includes(id)) {
+                    this.state.byFaction.cities[newOwner] = [...idx, id];
                 }
             }
         }
@@ -224,6 +233,10 @@ class GameStore {
             byCity: { officers: {} },
             byOfficer: { relationships: {} },
         };
+        // 글로벌 상태 리셋 — 싱글톤 재사용 시 이전 판의 playerFactionId/턴 잔존 방지 [결함 수정]
+        this.globalState.turnCount = 0;
+        this.globalState.selectedOfficerId = null;
+        this.globalState.playerFactionId = null;
         for (const o of officers)
             this.addOfficer(o);
         for (const f of factions) {
