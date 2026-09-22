@@ -28,6 +28,8 @@ export declare class GameEngine {
     private loyaltySystem;
     private diplomacy;
     private diplomacyAI;
+    /** 연대기 관리자 [Y-메타][441-460] — 서사적 이벤트 기록, 세이브에 포함 */
+    readonly chronicle: import('./chronicle_system.js').ChronicleManager;
     private isProcessingTurn;
     constructor(store?: GameStore);
     private initBootstrap;
@@ -73,6 +75,7 @@ export declare class GameEngine {
             b: string;
             relation: string;
         }>;
+        chronicle?: import('./chronicle_system.js').ChronicleEntry[];
     };
     saveCompressed(): string;
     loadCompressed(compressed: string): boolean;
@@ -85,6 +88,7 @@ export declare class GameEngine {
             b: string;
             relation: string;
         }>;
+        chronicle?: import('./chronicle_system.js').ChronicleEntry[];
     }): void;
     initWorld(officers: Officer[], factions: Faction[], cities: City[], armies: Army[]): void;
     private delay;

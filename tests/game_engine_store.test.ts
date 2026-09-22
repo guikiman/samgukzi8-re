@@ -346,6 +346,32 @@ describe('GameEngine', () => {
         expect(store.getOfficer('o1')!.loyalty).toBe(80);
     });
 
+    it('연대기가 세이브에 포함되고 로드 시 복원된다 [Y-메타][441-460]', () => {
+        engine.chronicle.clear();
+        engine.chronicle.add('DESTROYED', '원소 세력이 멸망했다', { year: 200, month: 10, turn: 25 });
+        engine.chronicle.add('PACT', '관우·장비 의형제 결의', { year: 184, month: 2, turn: 1 });
+        const saved = engine.save();
+        expect(saved.chronicle).toHaveLength(2);
+        // 새 엔진에 로드 → 연대기 복원
+        const store2 = new GameStore();
+        const engine2 = new GameEngine(store2);
+        expect(engine2.chronicle.size).toBe(0);
+        engine2.load(saved);
+        expect(engine2.chronicle.size).toBe(2);
+        const list = engine2.chronicle.list();
+        expect(list[0].text).toBe('관우·장비 의형제 결의'); // 최신순
+        expect(list[1].text).toBe('원소 세력이 멸망했다');
+    });
+
+    it('구버전 세이브(연대기 없음) 로드 시 빈 상태로 정상 동작', () => {
+        const saved = engine.save();
+        const legacy = { ...saved, chronicle: undefined };
+        const store2 = new GameStore();
+        const engine2 = new GameEngine(store2);
+        engine2.load(legacy);
+        expect(engine2.chronicle.size).toBe(0);
+    });
+
     it('initWorld starts at WORLD_MAP', () => {
         const o = makeOfficer('o1');
         const f = makeFaction('f1');

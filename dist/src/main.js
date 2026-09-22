@@ -28,7 +28,10 @@ import { acceptVisit, declineVisit } from './core/free_officer_visit_system.js';
 import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
 import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects } from './core/event_feedback_effects.js';
-import { ChronicleManager } from './core/chronicle_system.js';
+import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
+import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
+// 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
+const engineRef = { current: null };
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
 // DOM References
@@ -267,8 +270,33 @@ document.getElementById('rm-close').addEventListener('click', () => {
 });
 // 재야 무장 출사 타진 — 플레이어 세력 도시 방문 시 선택 모달 [24][421-440]
 let pendingVisits = [];
-// 연대기 관리자 [Y-메타][441-460] — 서사적 이벤트 별도 기록
-const chronicle = new ChronicleManager();
+// 연대기 관리자 [Y-메타][441-460] — 엔진 내장 인스턴스 게으른 참조 (세이브에 포함됨)
+const chronicle = {
+    add(kind, text) {
+        engineRef.current?.chronicle.add(kind, text);
+    },
+    list() { return engineRef.current?.chronicle.list() ?? []; },
+};
+// 월말 정산 요약 [E1-361][461-480] — 이전 스냅샷 대비 증감 패널
+let prevSettlement = null;
+function updateSettlementPanel() {
+    const engine = engineRef.current;
+    if (!engine)
+        return;
+    const report = computeSettlement(engine['store']);
+    const gs = engine['store'].getGlobalState();
+    const pid = gs.playerFactionId;
+    const mine = report.factions.find(f => f.factionId === pid);
+    if (mine) {
+        const prevMine = prevSettlement?.factions.find(f => f.factionId === pid);
+        const d = diffSettlement(prevMine, mine);
+        const fmt = (v) => `${v >= 0 ? '+' : ''}${v.toLocaleString()}`;
+        addLog(`💰 정산 — 金 ${mine.gold.toLocaleString()} (${fmt(d.gold)}) · 穀 ${mine.food.toLocaleString()} (${fmt(d.food)})` +
+            ` · 兵 ${mine.troops.toLocaleString()} (${fmt(d.troops)}) · 무장 ${mine.officerCount} (${fmt(d.officerCount)})` +
+            ` · 월수입 金${mine.goldIncome}/穀${mine.foodIncome}`);
+    }
+    prevSettlement = report;
+}
 /** 연대기 탭 렌더 — 최신순으로 아이콘+연도+문구 표시 */
 function renderChronicle() {
     const el = document.getElementById('chronicle-content');
@@ -1651,6 +1679,8 @@ btnNextMonth.addEventListener('click', async () => {
         await engine.executeTurn();
         const gs = engine['store'].getGlobalState();
         addLog(`📅 ${gs.time.year}년 ${gs.time.month}월 — 턴 ${gs.turnCount}`);
+        // 월말 정산 요약 갱신 [E1-361][461-480]
+        updateSettlementPanel();
         // 지도(소속/영토) + 열려 있는 패널 갱신
         syncChinaMapCities();
         if (currentPanelCityId) {
@@ -1681,9 +1711,8 @@ function init() {
     resizeCanvas();
     // Create engine and bootstrap
     engine = getGameEngine();
+    engineRef.current = engine;
     bootstrap = getBootstrap();
-    // 연대기 관리자 — 스토어 연결해 시각 자동 수집 [441-460]
-    chronicle.attachStore(engine['store']);
     // Create renderers: 헥사(전투용) + 중국 전도(월드용)
     hexRenderer = new HexMapCanvasRenderer(canvas);
     hexTiles = generateDemoHexTiles();
@@ -1917,6 +1946,12 @@ function renderScenarioList(scenarios) {
     scenarioList.innerHTML = scenarios.map(s => {
         const [y, m] = s.start_date.split('-');
         const stars = '★'.repeat(s.difficulty) + `<span class="off">${'★'.repeat(Math.max(0, 5 - s.difficulty))}</span>`;
+        // 난이도 배율 요약 [X-난이도] — 사건 빈도/산적 피해를 직관적으로 안내
+        const mult = DIFFICULTY_MULTIPLIERS[Math.min(4, Math.max(0, s.difficulty - 1))];
+        const freqPct = Math.round((mult.roamingFrequency - 1) * 100);
+        const banditPct = Math.round((mult.banditScale - 1) * 100);
+        const balText = `${freqPct >= 0 ? '사건 +' + freqPct : '사건 ' + freqPct}% · 산적 ${banditPct >= 0 ? '+' : ''}${banditPct}%`;
+        const balClass = s.difficulty <= 2 ? 'bal-easy' : s.difficulty >= 4 ? 'bal-hard' : 'bal-std';
         return `<button class="scenario-card" data-id="${s.id}">
             <span class="scenario-num">${s.id}</span>
             <span class="scenario-body">
@@ -1926,6 +1961,7 @@ function renderScenarioList(scenarios) {
             </span>
             <span class="scenario-side">
                 <span class="difficulty">${stars}</span>
+                <span class="difficulty-balance ${balClass}">${balText}</span>
                 <span class="faction-count">세력 ${s.factions.length}</span>
             </span>
         </button>`;

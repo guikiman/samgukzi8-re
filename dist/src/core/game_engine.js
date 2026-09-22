@@ -16,6 +16,7 @@ import { FactionFateSystem } from './faction_fate_system.js';
 import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
+import { ChronicleManager } from './chronicle_system.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
 import { processMonthlyRoamingEvents } from './roaming_event_system.js';
@@ -42,6 +43,8 @@ export class GameEngine {
         this.loyaltySystem.diplomacy = this.diplomacy;
         this.factionAI.diplomacy = this.diplomacy;
         this.diplomacyAI = new FactionDiplomacyAI(this.store, this.diplomacy);
+        this.chronicle = new ChronicleManager();
+        this.chronicle.attachStore(this.store);
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -592,6 +595,8 @@ export class GameEngine {
             globalState: this.store.getGlobalState(),
             commands: this.commandQueue.serializeAll(),
             diplomacy: this.diplomacy.serialize(),
+            // 연대기 포함 [Y-메타][441-460] — 이어하기 후에도 역사 유지
+            chronicle: this.chronicle.serialize(),
         };
     }
     saveCompressed() {
@@ -623,6 +628,10 @@ export class GameEngine {
         // 외교 관계 복원 (구버전 세이브 호환: 없으면 초기화 상태 유지)
         if (data.diplomacy) {
             this.diplomacy.restore(data.diplomacy);
+        }
+        // 연대기 복원 (구버전 세이브 호환: 없으면 빈 상태 유지) [Y-메타][441-460]
+        if (data.chronicle) {
+            this.chronicle.load(data.chronicle);
         }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {

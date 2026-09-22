@@ -24,6 +24,7 @@ import { FactionFateSystem } from './faction_fate_system.js';
 import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
+import { ChronicleManager } from './chronicle_system.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
 import { processMonthlyRoamingEvents } from './roaming_event_system.js';
@@ -59,6 +60,8 @@ export class GameEngine {
     private loyaltySystem: OfficerLoyaltySystem;
     private diplomacy: DiplomacyEngine;
     private diplomacyAI: FactionDiplomacyAI;
+    /** 연대기 관리자 [Y-메타][441-460] — 서사적 이벤트 기록, 세이브에 포함 */
+    readonly chronicle: import('./chronicle_system.js').ChronicleManager;
     private isProcessingTurn = false;
 
     constructor(store?: GameStore) {
@@ -77,6 +80,8 @@ export class GameEngine {
         this.loyaltySystem.diplomacy = this.diplomacy;
         this.factionAI.diplomacy = this.diplomacy;
         this.diplomacyAI = new FactionDiplomacyAI(this.store, this.diplomacy);
+        this.chronicle = new ChronicleManager();
+        this.chronicle.attachStore(this.store);
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -661,12 +666,14 @@ export class GameEngine {
         return this.diplomacy;
     }
 
-    save(): { state: NormalizedState; globalState: GlobalState; commands: SerializedCommand[]; diplomacy: Array<{ a: string; b: string; relation: string }> } {
+    save(): { state: NormalizedState; globalState: GlobalState; commands: SerializedCommand[]; diplomacy: Array<{ a: string; b: string; relation: string }>; chronicle?: import('./chronicle_system.js').ChronicleEntry[] } {
         return {
             state: this.store.createSnapshot(),
             globalState: this.store.getGlobalState(),
             commands: this.commandQueue.serializeAll(),
             diplomacy: this.diplomacy.serialize(),
+            // 연대기 포함 [Y-메타][441-460] — 이어하기 후에도 역사 유지
+            chronicle: this.chronicle.serialize(),
         };
     }
 
@@ -690,7 +697,7 @@ export class GameEngine {
         }
     }
 
-    load(data: { state: NormalizedState; globalState: GlobalState; commands: SerializedCommand[]; diplomacy?: Array<{ a: string; b: string; relation: string }> }): void {
+    load(data: { state: NormalizedState; globalState: GlobalState; commands: SerializedCommand[]; diplomacy?: Array<{ a: string; b: string; relation: string }>; chronicle?: import('./chronicle_system.js').ChronicleEntry[] }): void {
         this.store.restoreSnapshot(data.state);
         this.store.setGlobalState(data.globalState);
         // FSM을 세이브 시점 페이즈로 동기화 (onEnter 부작용 없이 상태만 복원)
@@ -700,6 +707,10 @@ export class GameEngine {
         // 외교 관계 복원 (구버전 세이브 호환: 없으면 초기화 상태 유지)
         if (data.diplomacy) {
             this.diplomacy.restore(data.diplomacy);
+        }
+        // 연대기 복원 (구버전 세이브 호환: 없으면 빈 상태 유지) [Y-메타][441-460]
+        if (data.chronicle) {
+            this.chronicle.load(data.chronicle);
         }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {

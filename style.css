@@ -979,3 +979,9 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .chronicle-entry .ch-text { flex: 1; color: #b8b2a0; line-height: 1.45; }
 .chronicle-entry.ch-major .ch-text { color: #e8dcc8; font-weight: 600; }
 .chronicle-empty { padding: 12px 4px; opacity: .5; font-style: italic; }
+
+/* ==================== 시나리오 난이도 배율 배지 [X-난이도] ==================== */
+.difficulty-balance { display: inline-block; font-size: .64rem; border-radius: 8px; padding: 1px 8px; margin: 3px 0; border: 1px solid; }
+.bal-easy { color: #9fd6a0; border-color: rgba(159,214,160,.4); background: rgba(159,214,160,.08); }
+.bal-std { color: #d4c48a; border-color: rgba(212,196,138,.4); background: rgba(212,196,138,.08); }
+.bal-hard { color: #e08a80; border-color: rgba(224,138,128,.45); background: rgba(224,138,128,.1); }
