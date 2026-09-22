@@ -25,6 +25,7 @@ import { OfficerLoyaltySystem } from './officer_loyalty_system.js';
 import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { ChronicleManager } from './chronicle_system.js';
+import { processHellConstraints } from './hell_constraint_system.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
 import { processMonthlyRoamingEvents } from './roaming_event_system.js';
@@ -430,6 +431,38 @@ export class GameEngine {
                 });
             }
             this.store.advanceTime();
+            // 지옥 난이도 제약 — 수입 유실/탈영/반란 [X-난이도]
+            const hellReport = processHellConstraints(this.store);
+            if (hellReport.taxLeaked > 0) {
+                console.log(`[Engine] 지옥: 세수 유실 ${hellReport.taxLeaked}`);
+                this.emitEvent({
+                    id: `hell_tax_${Date.now()}`,
+                    type: 'HELL_CONSTRAINT',
+                    payload: { kind: 'TAX_LEAK', amount: hellReport.taxLeaked, message: `⚔️ 전란으로 세수 ${hellReport.taxLeaked}이(가) 유실되었습니다` },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            for (const d of hellReport.deserted) {
+                console.log(`[Engine] 지옥: 탈영 ${d.officerName}`);
+                this.emitEvent({
+                    id: `hell_desert_${d.officerId}_${Date.now()}`,
+                    type: 'HELL_CONSTRAINT',
+                    payload: { kind: 'DESERTION', officerId: d.officerId, message: `🚪 저충성 무장 ${d.officerName}이(가) 군을 이탈했습니다` },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            for (const r of hellReport.revolted) {
+                console.log(`[Engine] 지옥: 반란 ${r.cityName}`);
+                this.emitEvent({
+                    id: `hell_revolt_${r.cityId}_${Date.now()}`,
+                    type: 'HELL_CONSTRAINT',
+                    payload: { kind: 'REVOLT', cityId: r.cityId, message: `🔥 치안이 무너진 ${r.cityName}에서 반란이 일어 ${r.fromFactionName}에서 이탈했습니다` },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             // [결함 수정] 턴 중반 유지보수 이벤트(재야 방문/로밍/복수/구출 등)가
             // 다음 턴 시작까지 배출되지 않아 UI가 1턴 늦게 반응하는 문제 해소
             this.processEventQueue();

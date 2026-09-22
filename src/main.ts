@@ -342,6 +342,7 @@ const chronicle = {
 
 // 월말 정산 요약 [E1-361][461-480] — 이전 스냅샷 대비 증감 패널
 let prevSettlement: import('./core/settlement_summary_system.js').SettlementReport | null = null;
+let latestSettlement: import('./core/settlement_summary_system.js').SettlementReport | null = null;
 
 function updateSettlementPanel(): void {
     const engine = engineRef.current;
@@ -361,39 +362,142 @@ function updateSettlementPanel(): void {
         );
     }
     prevSettlement = report;
+    latestSettlement = report;
+}
+
+/** 정산 패널 렌더 — 세력 비교 표 (수입/국고/병력/증감) [E1-361][461-480] */
+function renderSettlementPanel(): void {
+    const el = document.getElementById('settlement-content');
+    const engine = engineRef.current;
+    if (!el || !engine) return;
+    if (!latestSettlement) {
+        // 첫 턴 전이라도 현재 상태를 즉시 산출해 표시
+        latestSettlement = computeSettlement(engine['store']);
+    }
+    const gs = engine['store'].getGlobalState();
+    const pid = gs.playerFactionId;
+    const rows = latestSettlement.factions.map(f => {
+        const prevF = prevSettlement && prevSettlement !== latestSettlement
+            ? prevSettlement.factions.find(x => x.factionId === f.factionId)
+            : undefined;
+        const d = diffSettlement(prevF, f);
+        const isPlayer = f.factionId === pid;
+        const delta = (v: number) => v === 0 ? '<span class="st-delta zero">-</span>'
+            : `<span class="st-delta ${v > 0 ? 'up' : 'down'}">${v > 0 ? '▲' : '▼'}${Math.abs(v).toLocaleString()}</span>`;
+        return `<tr class="${isPlayer ? 'st-player' : ''}">` +
+            `<td class="st-name">${isPlayer ? '👑 ' : ''}${f.factionName}</td>` +
+            `<td>${f.cityCount}</td>` +
+            `<td>${f.gold.toLocaleString()}${delta(d.gold)}</td>` +
+            `<td>${f.food.toLocaleString()}${delta(d.food)}</td>` +
+            `<td>${f.goldIncome}</td>` +
+            `<td>${f.troops.toLocaleString()}${delta(d.troops)}</td>` +
+            `<td>${f.officerCount}${delta(d.officerCount)}</td>` +
+            `<td>${f.avgMorale}</td></tr>`;
+    }).join('');
+    el.innerHTML =
+        `<div class="st-title">💰 ${latestSettlement.year}년 ${latestSettlement.month}월 정산 (턴 ${latestSettlement.turn})</div>` +
+        `<table class="st-table"><thead><tr>` +
+        `<th>세력</th><th>도시</th><th>국고</th><th>병량</th><th>월수입</th><th>병력</th><th>무장</th><th>사기</th>` +
+        `</tr></thead><tbody>${rows}</tbody></table>` +
+        `<div class="st-note">▲▼ = 지난달 대비 증감 · 턴이 지나야 증감이 집계됩니다</div>`;
 }
 
 /** 연대기 탭 렌더 — 최신순으로 아이콘+연도+문구 표시 */
+// 연대기 필터 상태 [Y-메타][441-460]
+let chronicleKindFilter: string | null = null;
+let chronicleCollapsedYears = new Set<number>();
+
+const CHRONICLE_FILTERS: Array<{ kind: string | null; label: string }> = [
+    { kind: null, label: '전체' },
+    { kind: 'VENGEANCE', label: '⚔️ 복수' },
+    { kind: 'FREE_VISIT', label: '🚶 출사' },
+    { kind: 'PACT', label: '🤝 결의' },
+    { kind: 'RESCUE', label: '🛡️ 구출' },
+    { kind: 'DESTROYED', label: '💀 멸망' },
+];
+
 function renderChronicle(): void {
     const el = document.getElementById('chronicle-content');
     if (!el) return;
-    const entries = chronicle.list();
-    if (entries.length === 0) {
+    const all = chronicle.list();
+    if (all.length === 0) {
         el.innerHTML = '<div class="chronicle-empty">아직 기록된 사건이 없다…</div>';
         return;
     }
+    // 종별 필터 적용
+    const entries = chronicleKindFilter ? all.filter(e => e.kind === chronicleKindFilter) : all;
+    // 연도별 그룹화 (최신 연도가 위)
+    const yearGroups = new Map<number, typeof entries>();
+    for (const e of entries) {
+        if (!yearGroups.has(e.year)) yearGroups.set(e.year, []);
+        yearGroups.get(e.year)!.push(e);
+    }
     const majorKinds = new Set(['DESTROYED', 'ENDING', 'RESCUE', 'PACT']);
-    el.innerHTML = entries.map(e =>
-        `<div class="chronicle-entry${majorKinds.has(e.kind) ? ' ch-major' : ''}">` +
-        `<span class="ch-icon">${e.icon}</span>` +
-        `<span class="ch-date">${e.year}년 ${e.month}월</span>` +
-        `<span class="ch-text">${e.text}</span></div>`
+    const filterChips = CHRONICLE_FILTERS.map(f =>
+        `<button class="ch-filter${chronicleKindFilter === f.kind ? ' active' : ''}" data-kind="${f.kind ?? ''}">${f.label}</button>`
     ).join('');
+    const groupsHtml = Array.from(yearGroups.entries()).map(([year, list]) => {
+        const collapsed = chronicleCollapsedYears.has(year);
+        return `<div class="ch-year-group">` +
+            `<button class="ch-year-toggle" data-year="${year}">` +
+            `<span class="ch-year-arrow">${collapsed ? '▶' : '▼'}</span> ${year}년 <span class="ch-year-count">(${list.length})</span></button>` +
+            (collapsed ? '' : list.map(e =>
+                `<div class="chronicle-entry${majorKinds.has(e.kind) ? ' ch-major' : ''}">` +
+                `<span class="ch-icon">${e.icon}</span>` +
+                `<span class="ch-date">${e.month}월</span>` +
+                `<span class="ch-text">${e.text}</span></div>`
+            ).join('')) +
+            `</div>`;
+    }).join('');
+    el.innerHTML = `<div class="ch-filters">${filterChips}</div>` +
+        (entries.length === 0 ? '<div class="chronicle-empty">해당 종류의 기록이 없다…</div>' : groupsHtml);
 }
+
+// 연대기 필터 칩 + 연도 토글 이벤트 위임
+document.getElementById('chronicle-content')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const chip = target.closest('.ch-filter') as HTMLElement | null;
+    if (chip) {
+        const kind = chip.dataset.kind || null;
+        chronicleKindFilter = chronicleKindFilter === kind ? null : kind;
+        renderChronicle();
+        return;
+    }
+    const yearBtn = target.closest('.ch-year-toggle') as HTMLElement | null;
+    if (yearBtn) {
+        const year = Number(yearBtn.dataset.year);
+        if (chronicleCollapsedYears.has(year)) chronicleCollapsedYears.delete(year);
+        else chronicleCollapsedYears.add(year);
+        renderChronicle();
+    }
+});
 
 // 기록 탭 전환 (로그 ↔ 연대기)
 document.getElementById('tab-log')?.addEventListener('click', () => {
     document.getElementById('tab-log')!.classList.add('active');
     document.getElementById('tab-chronicle')!.classList.remove('active');
+    document.getElementById('tab-settlement')!.classList.remove('active');
     document.getElementById('log-content')!.style.display = '';
     document.getElementById('chronicle-content')!.style.display = 'none';
+    document.getElementById('settlement-content')!.style.display = 'none';
 });
 document.getElementById('tab-chronicle')?.addEventListener('click', () => {
     document.getElementById('tab-chronicle')!.classList.add('active');
     document.getElementById('tab-log')!.classList.remove('active');
+    document.getElementById('tab-settlement')!.classList.remove('active');
     document.getElementById('log-content')!.style.display = 'none';
+    document.getElementById('settlement-content')!.style.display = 'none';
     renderChronicle();
     document.getElementById('chronicle-content')!.style.display = '';
+});
+document.getElementById('tab-settlement')?.addEventListener('click', () => {
+    document.getElementById('tab-settlement')!.classList.add('active');
+    document.getElementById('tab-log')!.classList.remove('active');
+    document.getElementById('tab-chronicle')!.classList.remove('active');
+    document.getElementById('log-content')!.style.display = 'none';
+    document.getElementById('chronicle-content')!.style.display = 'none';
+    renderSettlementPanel();
+    document.getElementById('settlement-content')!.style.display = '';
 });
 
 function openVisitModal(visit: FreeOfficerVisit): void {
@@ -1928,6 +2032,15 @@ function init(): void {
     engine.subscribe('GAME_ENDING', (event: any) => {
         showEnding(event.payload.ending as string, event.payload.winner as string);
         chronicle.add('ENDING', `${event.payload.winner}이(가) 천하를 통일했다 — ${event.payload.ending}`);
+    });
+    // 지옥 난이도 제약 이벤트 [X-난이도]
+    engine.subscribe('HELL_CONSTRAINT', (event: any) => {
+        addLog(`${event.payload.message}`);
+        const kind = event.payload.kind as string;
+        if (kind === 'TAX_LEAK') chronicle.add('VISIT', event.payload.message as string);
+        else if (kind === 'DESERTION') chronicle.add('DEFECTION', event.payload.message as string);
+        else if (kind === 'REVOLT') chronicle.add('DESTROYED', event.payload.message as string);
+        fireFeedback('VENGEANCE_FAIL');
     });
 
     addLog('엔진 준비 완료 — 게임 시작을 눌러주세요');

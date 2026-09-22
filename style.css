@@ -985,3 +985,28 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .bal-easy { color: #9fd6a0; border-color: rgba(159,214,160,.4); background: rgba(159,214,160,.08); }
 .bal-std { color: #d4c48a; border-color: rgba(212,196,138,.4); background: rgba(212,196,138,.08); }
 .bal-hard { color: #e08a80; border-color: rgba(224,138,128,.45); background: rgba(224,138,128,.1); }
+
+/* ==================== 정산 패널 [E1-361][461-480] ==================== */
+#settlement-content { flex: 1; overflow-y: auto; max-height: 300px; }
+.st-title { font-size: .8rem; font-weight: 700; color: #d4af37; margin-bottom: 6px; }
+.st-table { width: 100%; border-collapse: collapse; font-size: .68rem; }
+.st-table th { text-align: left; color: #8a8494; font-weight: 600; padding: 3px 6px; border-bottom: 1px solid rgba(212,175,55,.3); white-space: nowrap; }
+.st-table td { padding: 4px 6px; border-bottom: 1px dashed rgba(212,175,55,.1); color: #c8c2b0; white-space: nowrap; }
+.st-table tr.st-player td { background: rgba(212,175,55,.1); color: #f0e6c8; font-weight: 700; }
+.st-name { font-weight: 700; }
+.st-delta { font-size: .6rem; margin-left: 3px; }
+.st-delta.up { color: #9fd6a0; }
+.st-delta.down { color: #e08a80; }
+.st-delta.zero { color: #6a6575; }
+.st-note { font-size: .62rem; opacity: .5; margin-top: 6px; font-style: italic; }
+
+/* ==================== 연대기 필터 [Y-메타][441-460] ==================== */
+.ch-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.ch-filter { font-size: .64rem; background: rgba(212,175,55,.06); border: 1px solid rgba(212,175,55,.25); border-radius: 10px; color: var(--text, #e8dcc8); padding: 2px 9px; cursor: pointer; opacity: .7; transition: background .15s ease, opacity .15s ease; }
+.ch-filter.active { background: rgba(212,175,55,.25); opacity: 1; font-weight: 700; }
+.ch-filter:hover { opacity: 1; }
+.ch-year-group { margin-bottom: 4px; }
+.ch-year-toggle { width: 100%; text-align: left; background: rgba(212,175,55,.1); border: 1px solid rgba(212,175,55,.3); border-radius: 4px; color: #d4af37; font-weight: 700; font-size: .72rem; padding: 3px 8px; cursor: pointer; margin-bottom: 2px; }
+.ch-year-toggle:hover { background: rgba(212,175,55,.18); }
+.ch-year-arrow { display: inline-block; width: 12px; font-size: .6rem; }
+.ch-year-count { opacity: .55; font-weight: 400; font-size: .64rem; }
