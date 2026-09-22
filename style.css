@@ -947,3 +947,35 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .rm-option-desc { font-size: .78rem; opacity: .75; }
 .rm-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(212,175,55,.1); border: 1px solid rgba(212,175,55,.3); color: var(--text, #e8dcc8); font-size: .88rem; }
 .rm-footer { margin-top: 10px; text-align: right; }
+
+/* ==================== 재야 방문 무장 상세 카드 [461-480] ==================== */
+.visit-card { background: rgba(212,175,55,.06); border: 1px solid rgba(212,175,55,.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.visit-card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.visit-card-name { font-size: 1.05rem; font-weight: 800; color: #d4af37; letter-spacing: 1px; }
+.visit-card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.visit-card-tag { font-size: .68rem; background: rgba(212,175,55,.15); border: 1px solid rgba(212,175,55,.35); border-radius: 10px; padding: 1px 8px; opacity: .9; }
+.visit-card-fame { color: #ffd700; border-color: rgba(255,215,0,.5); }
+.visit-card-stats { display: grid; gap: 4px; }
+.visit-stat { display: flex; align-items: center; gap: 8px; font-size: .75rem; }
+.visit-stat-label { width: 34px; text-align: right; opacity: .8; }
+.visit-stat-bar { flex: 1; height: 8px; background: rgba(0,0,0,.45); border-radius: 4px; overflow: hidden; border: 1px solid rgba(212,175,55,.2); }
+.visit-stat-fill { display: block; height: 100%; border-radius: 4px; transition: width .3s ease; }
+.visit-stat-excel { background: linear-gradient(90deg, #ffd700, #ff8c00); }
+.visit-stat-great { background: linear-gradient(90deg, #d4af37, #e8a33d); }
+.visit-stat-good { background: linear-gradient(90deg, #7a9e7e, #8fb08a); }
+.visit-stat-avg { background: linear-gradient(90deg, #6b6b5a, #7d7d6a); }
+.visit-stat-val { width: 28px; font-weight: 700; }
+.visit-card-ambition { margin-top: 8px; font-size: .75rem; opacity: .75; font-style: italic; }
+
+/* ==================== 연대기 탭 [Y-메타][441-460] ==================== */
+.log-tabs { display: flex; gap: 4px; margin-bottom: 4px; }
+.log-tab { flex: 1; background: rgba(212,175,55,.06); border: 1px solid rgba(212,175,55,.25); border-radius: 4px; color: var(--text, #e8dcc8); font-size: .72rem; padding: 3px 0; cursor: pointer; opacity: .65; transition: background .15s ease, opacity .15s ease; }
+.log-tab.active { background: rgba(212,175,55,.22); opacity: 1; font-weight: 700; }
+.log-tab:hover { opacity: 1; }
+#chronicle-content { flex: 1; font-size: 11px; overflow-y: auto; max-height: 300px; }
+.chronicle-entry { display: flex; gap: 6px; padding: 3px 2px; border-bottom: 1px dashed rgba(212,175,55,.12); }
+.chronicle-entry .ch-icon { flex-shrink: 0; }
+.chronicle-entry .ch-date { flex-shrink: 0; color: #d4af37; font-weight: 600; white-space: nowrap; font-size: 10px; padding-top: 1px; }
+.chronicle-entry .ch-text { flex: 1; color: #b8b2a0; line-height: 1.45; }
+.chronicle-entry.ch-major .ch-text { color: #e8dcc8; font-weight: 600; }
+.chronicle-empty { padding: 12px 4px; opacity: .5; font-style: italic; }

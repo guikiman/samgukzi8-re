@@ -14,6 +14,19 @@
 
 import type { GameStore } from './game_store.js';
 import { OfficerStatus } from './types.js';
+import { scaleVisitChance } from './difficulty_balance_system.js';
+
+/** 성격 유형 표시 라벨 [481-500] */
+const PERSONALITY_LABELS: Record<string, string> = {
+    AGGRESSIVE: '공전심',
+    CALM: '냉정',
+    CAUTIOUS: '신중',
+    TIMID: '소심',
+    LOYAL: '의리',
+    AMBITIOUS: '야망가',
+    RIGHTEOUS: '의협심',
+    GREEDY: '탐욕',
+};
 
 /** 방문 판정 결과 */
 export interface FreeOfficerVisit {
@@ -39,6 +52,14 @@ export interface FreeOfficerVisit {
     needsPlayerChoice: boolean;
     /** 로그 메시지 (AI 자동 판정 시 사용) */
     message: string;
+    /** 방문 무장 능력치 (모달 카드 표시용) [461-480] */
+    stats: { leadership: number; might: number; intelligence: number; politics: number; charisma: number };
+    /** 야망 (0~100, 입사 판단 근거) */
+    ambition: number;
+    /** 명성 (무장 개인) */
+    fame: number;
+    /** 성격 유형 (표시용 라벨) */
+    personalityLabel: string;
 }
 
 /** 기본 방문 확률 */
@@ -63,9 +84,10 @@ export function processMonthlyFreeOfficerVisits(store: GameStore, random: () => 
         const faction = store.getFaction(city.ownerId);
         if (!faction) continue;
 
-        // 방문 확률: 기본 30% × 야망/100 × 명성 가중 (명성 500+ → 1.5배)
+        // 방문 확률: 기본 30% × 야망/100 × 명성 가중 × 난이도 빈도 배율 [X-난이도]
         const fameWeight = Math.min(FAME_WEIGHT_MAX, 1 + officer.fame / 1000);
-        const visitChance = BASE_VISIT_CHANCE * (officer.ambition / 100) * fameWeight;
+        const visitChance = Math.min(1,
+            scaleVisitChance(BASE_VISIT_CHANCE, store) * (officer.ambition / 100) * fameWeight);
         const visitRoll = random();
         if (visitRoll >= visitChance) continue;
 
@@ -110,6 +132,10 @@ export function processMonthlyFreeOfficerVisits(store: GameStore, random: () => 
             joined,
             needsPlayerChoice,
             message,
+            stats: { ...officer.stats },
+            ambition: officer.ambition,
+            fame: officer.fame,
+            personalityLabel: PERSONALITY_LABELS[officer.personality] ?? officer.personality,
         });
     }
 

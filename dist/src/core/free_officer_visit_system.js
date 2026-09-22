@@ -12,6 +12,18 @@
  * AI 세력 도시 방문은 자동 판정한다. roll 주입으로 결정적 테스트를 지원한다.
  */
 import { OfficerStatus } from './types.js';
+import { scaleVisitChance } from './difficulty_balance_system.js';
+/** 성격 유형 표시 라벨 [481-500] */
+const PERSONALITY_LABELS = {
+    AGGRESSIVE: '공전심',
+    CALM: '냉정',
+    CAUTIOUS: '신중',
+    TIMID: '소심',
+    LOYAL: '의리',
+    AMBITIOUS: '야망가',
+    RIGHTEOUS: '의협심',
+    GREEDY: '탐욕',
+};
 /** 기본 방문 확률 */
 export const BASE_VISIT_CHANCE = 0.3;
 /** 명성 가중 — 명성 500 이상이면 확률 1.5배 (상한) */
@@ -32,9 +44,9 @@ export function processMonthlyFreeOfficerVisits(store, random = Math.random) {
         const faction = store.getFaction(city.ownerId);
         if (!faction)
             continue;
-        // 방문 확률: 기본 30% × 야망/100 × 명성 가중 (명성 500+ → 1.5배)
+        // 방문 확률: 기본 30% × 야망/100 × 명성 가중 × 난이도 빈도 배율 [X-난이도]
         const fameWeight = Math.min(FAME_WEIGHT_MAX, 1 + officer.fame / 1000);
-        const visitChance = BASE_VISIT_CHANCE * (officer.ambition / 100) * fameWeight;
+        const visitChance = Math.min(1, scaleVisitChance(BASE_VISIT_CHANCE, store) * (officer.ambition / 100) * fameWeight);
         const visitRoll = random();
         if (visitRoll >= visitChance)
             continue;
@@ -76,6 +88,10 @@ export function processMonthlyFreeOfficerVisits(store, random = Math.random) {
             joined,
             needsPlayerChoice,
             message,
+            stats: { ...officer.stats },
+            ambition: officer.ambition,
+            fame: officer.fame,
+            personalityLabel: PERSONALITY_LABELS[officer.personality] ?? officer.personality,
         });
     }
     return visits;

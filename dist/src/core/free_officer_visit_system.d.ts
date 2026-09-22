@@ -36,6 +36,20 @@ export interface FreeOfficerVisit {
     needsPlayerChoice: boolean;
     /** 로그 메시지 (AI 자동 판정 시 사용) */
     message: string;
+    /** 방문 무장 능력치 (모달 카드 표시용) [461-480] */
+    stats: {
+        leadership: number;
+        might: number;
+        intelligence: number;
+        politics: number;
+        charisma: number;
+    };
+    /** 야망 (0~100, 입사 판단 근거) */
+    ambition: number;
+    /** 명성 (무장 개인) */
+    fame: number;
+    /** 성격 유형 (표시용 라벨) */
+    personalityLabel: string;
 }
 /** 기본 방문 확률 */
 export declare const BASE_VISIT_CHANCE = 0.3;

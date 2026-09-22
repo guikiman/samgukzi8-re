@@ -349,6 +349,7 @@ export function buildWorld(scenario, playerFactionIndex) {
         factions,
         cities,
         playerFactionId: `fac_${playerFactionIndex}`,
+        scenario: { id: scenario.id, difficulty: scenario.difficulty },
     };
 }
 //# sourceMappingURL=scenario_system.js.map

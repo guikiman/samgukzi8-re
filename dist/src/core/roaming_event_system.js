@@ -13,6 +13,7 @@
  * 이벤트는 GAME_ROAMING_EVENT 타입으로 발화해 UI 로그와 연결된다.
  */
 import { EncounterMatcher } from './encounter_matcher.js';
+import { getDifficultyMultiplier } from './difficulty_balance_system.js';
 /** 로밍 판정 대상 도시 수 상한 (성능 보호 — 매월 최대 8개 도시만 판정) */
 const MAX_CITY_ROLLS_PER_MONTH = 8;
 /** 상인 교역 수익 */
@@ -54,13 +55,15 @@ export function processMonthlyRoamingEvents(store) {
         return { events };
     const season = seasonKey(gs.time.month);
     const matcher = new EncounterMatcher();
-    // 매월 일부 도시만 샘플링해 판정 (성능 + 이벤트 빈도 조절)
+    // 매월 일부 도시만 샘플링해 판정 (성능 + 이벤트 빈도 조절, 난이도 배율 반영) [X-난이도]
+    const mult = getDifficultyMultiplier(store);
+    const sampleSize = Math.min(cities.length, Math.max(1, Math.round(MAX_CITY_ROLLS_PER_MONTH * mult.roamingFrequency)));
     const shuffled = cities.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    const sample = shuffled.slice(0, Math.min(MAX_CITY_ROLLS_PER_MONTH, shuffled.length));
+    const sample = shuffled.slice(0, sampleSize);
     for (const city of sample) {
         // 도시 대표 무장의 명성을 컨텍스트에 반영 (현자/은자는 명성이 높은 도시를 찾아온다)
         const repOfficer = city.officerIds
@@ -151,13 +154,15 @@ export function processMonthlyRoamingEvents(store) {
             }
             case 'BANDIT': {
                 // 산적은 치안이 낮은 도시에서만 발생 (matcher가 이미 safetyFactor로 가중)
+                // 피해는 난이도 배율 반영 — 높은 난이도일수록 약탈 피해 커짐 [X-난이도]
+                const plunder = Math.round(BANDIT_PLUNDER * mult.banditScale);
                 store.updateCity(city.id, {
-                    funds: Math.max(0, city.funds - BANDIT_PLUNDER),
+                    funds: Math.max(0, city.funds - plunder),
                 });
                 events.push({
                     type: 'BANDIT', cityId: city.id, cityName: city.name, factionName,
                     needsPlayerChoice: false,
-                    message: `🗡️ 산적이 ${city.name}을(를) 약탈했습니다 (자금 −${BANDIT_PLUNDER})`,
+                    message: `🗡️ 산적이 ${city.name}을(를) 약탈했습니다 (자금 −${plunder})`,
                 });
                 break;
             }

@@ -28,6 +28,7 @@ import { acceptVisit, declineVisit } from './core/free_officer_visit_system.js';
 import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
 import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects } from './core/event_feedback_effects.js';
+import { ChronicleManager } from './core/chronicle_system.js';
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
 // DOM References
@@ -266,12 +267,63 @@ document.getElementById('rm-close').addEventListener('click', () => {
 });
 // 재야 무장 출사 타진 — 플레이어 세력 도시 방문 시 선택 모달 [24][421-440]
 let pendingVisits = [];
+// 연대기 관리자 [Y-메타][441-460] — 서사적 이벤트 별도 기록
+const chronicle = new ChronicleManager();
+/** 연대기 탭 렌더 — 최신순으로 아이콘+연도+문구 표시 */
+function renderChronicle() {
+    const el = document.getElementById('chronicle-content');
+    if (!el)
+        return;
+    const entries = chronicle.list();
+    if (entries.length === 0) {
+        el.innerHTML = '<div class="chronicle-empty">아직 기록된 사건이 없다…</div>';
+        return;
+    }
+    const majorKinds = new Set(['DESTROYED', 'ENDING', 'RESCUE', 'PACT']);
+    el.innerHTML = entries.map(e => `<div class="chronicle-entry${majorKinds.has(e.kind) ? ' ch-major' : ''}">` +
+        `<span class="ch-icon">${e.icon}</span>` +
+        `<span class="ch-date">${e.year}년 ${e.month}월</span>` +
+        `<span class="ch-text">${e.text}</span></div>`).join('');
+}
+// 기록 탭 전환 (로그 ↔ 연대기)
+document.getElementById('tab-log')?.addEventListener('click', () => {
+    document.getElementById('tab-log').classList.add('active');
+    document.getElementById('tab-chronicle').classList.remove('active');
+    document.getElementById('log-content').style.display = '';
+    document.getElementById('chronicle-content').style.display = 'none';
+});
+document.getElementById('tab-chronicle')?.addEventListener('click', () => {
+    document.getElementById('tab-chronicle').classList.add('active');
+    document.getElementById('tab-log').classList.remove('active');
+    document.getElementById('log-content').style.display = 'none';
+    renderChronicle();
+    document.getElementById('chronicle-content').style.display = '';
+});
 function openVisitModal(visit) {
     rmState = null;
     const modal = document.getElementById('roaming-modal');
     document.getElementById('rm-title').textContent = `🚶 출사 타진 — ${visit.cityName}`;
-    document.getElementById('rm-description').textContent =
-        `재야 무장 ${visit.officerName}이(가) 문객을 시켜 이르기를 — "천하가 어지럽으니 명주를 찾아 나서고자 하노라. 어떻게 하시겠습니까?" (수락 시 충성도 ${Math.round(visit.chance * 100)}% 계열 초기화)`;
+    // 방문 무장 상세 카드 [461-480] — 입사 판단 근거 제공
+    const s = visit.stats;
+    const sum = s.leadership + s.might + s.intelligence + s.politics + s.charisma;
+    const statBar = (label, v, max = 100) => {
+        const pct = Math.min(100, Math.round((v / max) * 100));
+        const tier = v >= 90 ? 'excel' : v >= 75 ? 'great' : v >= 60 ? 'good' : 'avg';
+        return `<div class="visit-stat"><span class="visit-stat-label">${label}</span><span class="visit-stat-bar"><span class="visit-stat-fill visit-stat-${tier}" style="width:${pct}%"></span></span><span class="visit-stat-val">${v}</span></div>`;
+    };
+    document.getElementById('rm-description').innerHTML =
+        `<div class="visit-card">` +
+            `<div class="visit-card-head"><span class="visit-card-name">${visit.officerName}</span>` +
+            `<span class="visit-card-tags"><span class="visit-card-tag">${visit.personalityLabel}</span>` +
+            `<span class="visit-card-tag">종합 ${sum}</span>` +
+            (visit.fame >= 100 ? `<span class="visit-card-tag visit-card-fame">✨ 명성 ${visit.fame}</span>` : '') +
+            `</span></div>` +
+            `<div class="visit-card-stats">` +
+            statBar('統率', s.leadership) + statBar('武力', s.might) + statBar('知力', s.intelligence) + statBar('政治', s.politics) + statBar('魅力', s.charisma) +
+            `</div>` +
+            `<div class="visit-card-ambition">야망 ${visit.ambition}/100 — ${visit.ambition >= 70 ? '천하에 큰 뜻이 있다' : visit.ambition >= 40 ? '무난한 대장부다' : '조용히 지내기를 바란다'}</div>` +
+            `</div>` +
+            `"천하가 어지럽으니 명주를 찾아 나서고자 하노라." — 문객의 전언 (수락 시 충성도 ${Math.round(visit.chance * 100)}% 계열 초기화)`;
     const optsEl = document.getElementById('rm-options');
     optsEl.innerHTML = `
         <button class="rm-option" data-visit="accept">
@@ -1079,11 +1131,13 @@ async function startGame(world = null) {
         try {
             engine.initWorld(world.officers, world.factions, world.cities, []);
             addLog(`월드 생성 완료 — ${world.factions.length}세력, ${world.cities.length}도시, ${world.officers.length}무장`);
-            // 플레이어 세력/군주 지정 (개인 행동 페이즈용)
+            // 플레이어 세력/군주 지정 (개인 행동 페이즈용) + 시나리오 난이도 주입 [X-난이도]
+            const difficulty = world.scenario?.difficulty ?? 3;
             engine['store'].setGlobalState({
                 ...engine['store'].getGlobalState(),
                 playerFactionId: world.playerFactionId,
                 selectedOfficerId: world.factions.find(f => f.id === world.playerFactionId)?.leaderId ?? null,
+                difficulty,
             });
         }
         catch (err) {
@@ -1628,6 +1682,8 @@ function init() {
     // Create engine and bootstrap
     engine = getGameEngine();
     bootstrap = getBootstrap();
+    // 연대기 관리자 — 스토어 연결해 시각 자동 수집 [441-460]
+    chronicle.attachStore(engine['store']);
     // Create renderers: 헥사(전투용) + 중국 전도(월드용)
     hexRenderer = new HexMapCanvasRenderer(canvas);
     hexTiles = generateDemoHexTiles();
@@ -1671,16 +1727,19 @@ function init() {
     engine.subscribe('OFFICER_DEATH', (event) => {
         addLog(`⚔️ ${event.payload.officerName} 사망 (${event.payload.cause})`);
     });
-    // 세력 멸망/배신/엔딩 이벤트 [213][24]
+    // 세력 멸망/배신/엔딩 이벤트 [213][24] — 연대기 기록 포함 [441-460]
     engine.subscribe('FACTION_DESTROYED', (event) => {
         addLog(`🔥 세력 멸망: ${event.payload.factionName}`);
+        chronicle.add('DESTROYED', `${event.payload.factionName} 세력이 역사에서 사라졌다`);
     });
     engine.subscribe('OFFICER_DEFECTED', (event) => {
         addLog(`🚪 배신: ${event.payload.officerName}이(가) 이탈했습니다`);
+        chronicle.add('DEFECTION', `${event.payload.officerName}이(가) 주군을 배신했다`);
     });
     // 포로 탈출 이벤트 [131-145]
     engine.subscribe('CAPTIVE_ESCAPED', (event) => {
         addLog(`🏃 포로 탈출: ${event.payload.officerName}이(가) 수용소에서 탈출했습니다`);
+        chronicle.add('CAPTURE', `${event.payload.officerName}이(가) 수용소에서 탈출했다`);
     });
     // 이벤트 연출 [191-200] — 흔들림 + 사운드
     engine.subscribe('VENGEANCE_EVENT', (event) => {
@@ -1695,18 +1754,22 @@ function init() {
     // 월간 복수 이벤트 [32][33][C-인간관계]
     engine.subscribe('VENGEANCE_EVENT', (event) => {
         addLog(`${event.payload.message}`);
+        chronicle.add('VENGEANCE', event.payload.message);
     });
     // 의형제 구출 이벤트 [C-인간관계]
     engine.subscribe('SWORN_BROTHER_RESCUED', (event) => {
         addLog(`🤝 의형제 구출: ${event.payload.rescuerName}이(가) ${event.payload.officerName}을(를) 구했습니다`);
+        chronicle.add('RESCUE', `${event.payload.rescuerName}이(가) 의형제 ${event.payload.officerName}을(를) 구출했다`);
     });
     // 의형제 결의 이벤트 [C-인간관계][25]
     engine.subscribe('SWORN_BROTHER_PACT', (event) => {
         addLog(`${event.payload.message}`);
+        chronicle.add('PACT', event.payload.message);
         fireFeedback('RESCUE'); // 결의도 밝은 톤으로 연출
     });
     engine.subscribe('GAME_ROAMING_EVENT', (event) => {
         addLog(`${event.payload.message}`);
+        chronicle.add('VISIT', event.payload.message);
         if (event.payload.roamingType === 'BANDIT')
             fireFeedback('VENGEANCE_FAIL'); // 산적 약탈 — 경고 톤
         else
@@ -1715,6 +1778,7 @@ function init() {
     // 재야 무장 출사 타진 이벤트 [24][421-440]
     engine.subscribe('FREE_OFFICER_VISIT', (event) => {
         addLog(`${event.payload.message}`);
+        chronicle.add('FREE_VISIT', `${event.payload.officerName}이(가) ${event.payload.cityName}을(를) 찾아 출사를 타진했다`);
         fireFeedback('RESCUE');
         // 플레이어 세력 도시 방문 → 선택 모달 (선택지 대기열) [461-480]
         if (event.payload.needsPlayerChoice) {
@@ -1725,6 +1789,7 @@ function init() {
     });
     engine.subscribe('GAME_ENDING', (event) => {
         showEnding(event.payload.ending, event.payload.winner);
+        chronicle.add('ENDING', `${event.payload.winner}이(가) 천하를 통일했다 — ${event.payload.ending}`);
     });
     addLog('엔진 준비 완료 — 게임 시작을 눌러주세요');
     statusText.textContent = '게임 시작 대기 중';

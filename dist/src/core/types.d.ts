@@ -314,6 +314,8 @@ export interface GlobalState {
     turnCount: number;
     selectedOfficerId: OfficerID | null;
     playerFactionId: FactionID | null;
+    /** 시나리오 난이도 1~5 (구버전 세이브 호환: optional) [X-난이도] */
+    difficulty?: number;
 }
 export interface IGameStore {
     getState(): NormalizedState;

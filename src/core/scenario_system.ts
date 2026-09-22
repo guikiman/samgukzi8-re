@@ -237,6 +237,8 @@ export interface BuiltWorld {
     factions: Faction[];
     cities: City[];
     playerFactionId: string;
+    /** 시나리오 난이도 (1~5) — GlobalState.difficulty로 주입 [X-난이도] */
+    scenario?: { id: string; difficulty: number };
 }
 
 /**
@@ -419,5 +421,6 @@ export function buildWorld(scenario: ScenarioData, playerFactionIndex: number): 
         factions,
         cities,
         playerFactionId: `fac_${playerFactionIndex}`,
+        scenario: { id: scenario.id, difficulty: scenario.difficulty },
     };
 }
