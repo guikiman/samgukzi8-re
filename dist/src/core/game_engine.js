@@ -18,6 +18,7 @@ import { DiplomacyEngine } from './diplomacy_engine.js';
 import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
+import { processMonthlyRoamingEvents } from './roaming_event_system.js';
 import { processMonthlySwornBrotherRescues } from './sworn_brother_rescue_system.js';
 import { processMonthlySwornBrotherPacts } from './sworn_brother_pact_system.js';
 export class GameEngine {
@@ -301,6 +302,18 @@ export class GameEngine {
                     id: `sworn_pact_${pact.officerAId}_${pact.officerBId}_${Date.now()}`,
                     type: 'SWORN_BROTHER_PACT',
                     payload: { officerAName: pact.officerAName, officerBName: pact.officerBName, factionId: pact.factionId, message: pact.message },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            // 월간 로밍 이벤트 — 재야 명사 방문 (현자/은자/상인/행상인/산적) [25][441-460]
+            const roamingReport = processMonthlyRoamingEvents(this.store);
+            for (const ev of roamingReport.events) {
+                console.log(`[Engine] ${ev.message}`);
+                this.emitEvent({
+                    id: `roaming_${ev.type}_${ev.cityId}_${Date.now()}`,
+                    type: 'GAME_ROAMING_EVENT',
+                    payload: { roamingType: ev.type, cityId: ev.cityId, cityName: ev.cityName, factionName: ev.factionName, message: ev.message },
                     timestamp: Date.now(),
                     turn: this.store.getGlobalState().turnCount,
                 });

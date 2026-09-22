@@ -17,8 +17,9 @@ import { SaveSlotManager } from './core/save_slot_manager.js';
 import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
-import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter } from './core/vengeance_system.js';
+import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter, applyVengeanceToUnits } from './core/vengeance_system.js';
 import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
+import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects } from './core/event_feedback_effects.js';
 import { getCaptivesInCity } from './core/captive_escape_system.js';
 // ============================================================
@@ -88,9 +89,9 @@ function addLog(msg) {
     logContent.scrollTop = logContent.scrollHeight;
 }
 let vmState = null;
-function openVengeanceModal(store, actorId, targetId, kind, enemyUnits) {
+function openVengeanceModal(store, actorId, targetId, kind, deployable, enemyUnits) {
     const game = startVengeanceGame(store, actorId, targetId, kind);
-    vmState = { store, actorId, targetId, kind, game, enemyUnits, done: false };
+    vmState = { store, actorId, targetId, kind, game, enemyUnits, deployable, done: false };
     const modal = document.getElementById('vengeance-modal');
     const actor = store.getOfficer(actorId);
     const target = store.getOfficer(targetId);
@@ -164,12 +165,13 @@ function finishVengeanceModal(actorWon) {
     addLog(outcome.message);
     // 연출 [191-200] — 성패에 따른 흔들림 + 사운드
     fireFeedback(actorWon ? 'VENGEANCE_SUCCESS' : 'VENGEANCE_FAIL');
-    // 복수 성공 시 적군 사기 타격 (전투 유닛 반영)
-    if (actorWon && outcome.targetMoraleHit > 0) {
-        for (const eu of enemyUnits) {
-            eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
-        }
-        addLog('🪫 적군 병력 사기가 크게 흔들립니다!');
+    // 복수 성공 시 전투 유닛 임팩트 [32][131-145] — 적군 사기 − / 아군 사기 + / 주도자 공격 보정
+    if (outcome.targetMoraleHit > 0 || outcome.success) {
+        const impact = applyVengeanceToUnits(outcome, vmState.deployable, enemyUnits);
+        if (impact.enemyLog)
+            addLog('🪫 적군 병력 사기가 크게 흔들립니다!');
+        if (impact.allyLog)
+            addLog(impact.allyLog);
     }
     // 종료 로그
     const logEl = document.getElementById('vm-log');
@@ -457,6 +459,9 @@ function renderOfficerDetail(officerId) {
         : '<div class="od-relation od-relation-empty">특별한 관계 없음</div>';
     const statusLabel = o.status === 'FREE' ? '재야' : o.factionId ? (store.getFaction(o.factionId)?.name ?? '-') : '-';
     const loyaltyColor = o.loyalty >= 70 ? '#4caf50' : o.loyalty >= 40 ? '#e8c35a' : '#e05a5a';
+    // 무장 개인 평판 표시 [11][27]
+    const odRep = getOfficerReputationVisual(o);
+    const odRepRow = `<div class="od-rep-row" title="${odRep.title}"><span class="rep-badge" style="color:${odRep.color}">${odRep.icon} ${odRep.label}</span></div>`;
     // 상호작용 UI [24][32][33]: 플레이어 세력 소속 무장이 상대와 할 수 있는 행동
     const gs = store.getGlobalState();
     const myFaction = gs.playerFactionId ? store.getFaction(gs.playerFactionId) : null;
@@ -481,6 +486,7 @@ function renderOfficerDetail(officerId) {
         : '';
     officerDetail.innerHTML = `
         <div class="od-name-row"><span class="od-name">${o.name}</span><span class="od-faction">${statusLabel}</span></div>
+        ${odRepRow}
         ${statBar('統率', o.stats.leadership, '#5a8fd4')}
         ${statBar('武力', o.stats.might, '#d45a5a')}
         ${statBar('智力', o.stats.intelligence, '#5ad48f')}
@@ -538,9 +544,12 @@ function statBar(label, value, max, color) {
 /** 도시 상세 패널 렌더링 (switched: 다른 도시에서 전환 시 콘텐츠 페이드) */
 function renderCityDetailPanel(city, faction, switched) {
     cdpCityName.textContent = city.name;
-    // 세력 배지 (세력색 테두리)
+    // 세력 배지 (세력색 테두리 + 군주 평판 등급 [11][27])
     if (faction) {
-        cdpFactionBadge.textContent = faction.name;
+        const leader = faction.leaderId ? store_getOfficerSafe(faction.leaderId) : null;
+        const repVis = getLeaderReputationVisual(leader);
+        cdpFactionBadge.innerHTML = `${faction.name} <span class="rep-badge" style="color:${repVis.color}" title="${repVis.title}">${repVis.icon} ${repVis.label}</span>`;
+        cdpFactionBadge.innerHTML = `${faction.name} <span class="rep-badge" style="color:${repVis.color}" title="${repVis.title}">${repVis.icon} ${repVis.label}</span>`;
         cdpFactionBadge.style.display = 'inline-block';
         cdpFactionBadge.style.setProperty('--faction-color', faction.color);
     }
@@ -1065,6 +1074,7 @@ function enterBattleMode() {
         deployable = srcOfficers.map((o, i) => ({
             unitId: `friendly_${i + 1}`,
             officerName: o.name,
+            officerId: o.id,
             unitType: unitTypes[i % unitTypes.length],
             soldiers: perUnitSoldiers,
             morale: 80 + Math.floor(o.stats.charisma / 10),
@@ -1079,7 +1089,7 @@ function enterBattleMode() {
         const enemyPer = Math.floor((tgtCity?.development ?? 3500) / Math.max(1, tgtOfficers.length));
         const enemyTypes = ['INFANTRY', 'CAVALRY', 'ARCHER'];
         enemyUnits = tgtOfficers.map((o, i) => ({
-            unitId: `enemy_${i + 1}`, officerId: `enemy_${i + 1}`, unitType: enemyTypes[i],
+            unitId: `enemy_${i + 1}`, officerId: o.id, unitType: enemyTypes[i],
             soldiers: enemyPer, morale: 70, training: 60,
             position: { q: 3, r: -1 + i }, facing: 0, isSupplied: true,
             baseAttack: 60 + Math.floor(o.stats.might / 3), baseDefense: 55 + Math.floor(o.stats.leadership / 4),
@@ -1098,7 +1108,7 @@ function enterBattleMode() {
                         return;
                     const perUnit = Math.floor(reinf.totalTroops / reinf.officerIds.length);
                     enemyUnits.push({
-                        unitId: `enemy_r${i + 1}`, officerId: `enemy_r${i + 1}`, unitType: reinfTypes[i % reinfTypes.length],
+                        unitId: `enemy_r${i + 1}`, officerId: oid, unitType: reinfTypes[i % reinfTypes.length],
                         soldiers: perUnit, morale: 75, training: 60,
                         position: { q: 4, r: i }, facing: 0, isSupplied: true,
                         baseAttack: 55 + Math.floor(o.stats.might / 3), baseDefense: 50 + Math.floor(o.stats.leadership / 4),
@@ -1149,19 +1159,18 @@ function enterBattleMode() {
                 // 주도자가 플레이어 세력 소속이면 인터랙티브 모달로 진행
                 const actor = storeV.getOfficer(judged.actorId);
                 if (actor && actor.factionId === gsV.playerFactionId) {
-                    openVengeanceModal(storeV, judged.actorId, judged.targetId, judged.kind, enemyUnits);
+                    openVengeanceModal(storeV, judged.actorId, judged.targetId, judged.kind, deployable, enemyUnits);
                 }
                 else {
-                    // AI 주도 — 자동 판정
+                    // AI 주도 — 자동 판정 + 전투 유닛 임팩트 [32][131-145]
                     const outcome = tryVengeanceOnEncounter(storeV, fId, eId);
                     if (outcome.triggered) {
                         addLog(outcome.message);
-                        if (outcome.success && outcome.targetMoraleHit > 0) {
-                            for (const eu of enemyUnits) {
-                                eu.morale = Math.max(10, eu.morale - Math.floor(outcome.targetMoraleHit / 3));
-                            }
+                        const impact = applyVengeanceToUnits(outcome, deployable, enemyUnits);
+                        if (impact.allyLog)
+                            addLog(impact.allyLog);
+                        if (impact.enemyLog)
                             addLog(`🪫 ${storeV.getCity(expeditionTarget)?.name ?? '적군'} 병력 사기가 흔들립니다`);
-                        }
                     }
                 }
                 break outer; // 전투당 복수 이벤트 1회
@@ -1585,6 +1594,13 @@ function init() {
     engine.subscribe('SWORN_BROTHER_PACT', (event) => {
         addLog(`${event.payload.message}`);
         fireFeedback('RESCUE'); // 결의도 밝은 톤으로 연출
+    });
+    engine.subscribe('GAME_ROAMING_EVENT', (event) => {
+        addLog(`${event.payload.message}`);
+        if (event.payload.roamingType === 'BANDIT')
+            fireFeedback('VENGEANCE_FAIL'); // 산적 약탈 — 경고 톤
+        else
+            fireFeedback('RESCUE'); // 현자/상인 방문 — 밝은 톤
     });
     engine.subscribe('GAME_ENDING', (event) => {
         showEnding(event.payload.ending, event.payload.winner);

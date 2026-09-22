@@ -69,7 +69,7 @@ export class BattleFrontend {
         // Convert deployable to battle unit
         const battleUnit = {
             unitId: unit.unitId,
-            officerId: unit.unitId,
+            officerId: unit.officerId ?? unit.unitId,
             unitType: unit.unitType,
             soldiers: unit.soldiers,
             morale: unit.morale,

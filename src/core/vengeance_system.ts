@@ -297,3 +297,62 @@ export function processMonthlyVengeance(store: GameStore): VengeanceOutcome[] {
     }
     return outcomes;
 }
+
+/**
+ * 복수 결과를 전투 유닛에 적용 [32][131-145]
+ *
+ * 성공: 적군 사기 −, 아군 전체 사기 +, 주도자 유닛 공격 보정
+ * 실패: 주도자 아군 사기 소폭 −
+ *
+ * 유닛 구조는 main.ts 전투 엔진과 느슨히 결합 (구조적 타이핑).
+ */
+export interface VengeanceUnit {
+    unitId: string;
+    officerId?: string;
+    morale: number;
+    baseAttack?: number;
+}
+
+/** 복수 성공 시 아군 사기 상승량 */
+export const VENGEANCE_ALLY_MORALE_BOOST = 8;
+/** 복수 성공 시 주도자 유닛 공격 보정 */
+export const VENGEANCE_ATTACK_BONUS = 6;
+/** 복수 실패 시 주도자 아군 사기 감소량 */
+export const VENGEANCE_FAIL_ALLY_MORALE_HIT = 5;
+
+export function applyVengeanceToUnits(
+    outcome: VengeanceOutcome,
+    allies: VengeanceUnit[],
+    enemies: VengeanceUnit[],
+): { allyLog: string | null; enemyLog: string | null } {
+    if (!outcome.triggered) return { allyLog: null, enemyLog: null };
+    const actor = outcome.actorId;
+    let allyLog: string | null = null;
+    let enemyLog: string | null = null;
+
+    if (outcome.success) {
+        if (outcome.targetMoraleHit > 0) {
+            const hit = Math.floor(outcome.targetMoraleHit / 3);
+            for (const eu of enemies) {
+                eu.morale = Math.max(10, eu.morale - hit);
+            }
+            enemyLog = `🪫 복수 성공 — 적군 사기 −${hit}`;
+        }
+        for (const au of allies) {
+            au.morale = Math.min(100, au.morale + VENGEANCE_ALLY_MORALE_BOOST);
+        }
+        if (actor) {
+            const actorUnit = [...allies, ...enemies].find(u => u.officerId === actor);
+            if (actorUnit && actorUnit.baseAttack !== undefined) {
+                actorUnit.baseAttack += VENGEANCE_ATTACK_BONUS;
+            }
+        }
+        allyLog = `🔥 복수 성사 — 아군 사기 +${VENGEANCE_ALLY_MORALE_BOOST}`;
+    } else {
+        for (const au of allies) {
+            au.morale = Math.max(10, au.morale - VENGEANCE_FAIL_ALLY_MORALE_HIT);
+        }
+        allyLog = `🪫 복수 실패 — 아군 사기 −${VENGEANCE_FAIL_ALLY_MORALE_HIT}`;
+    }
+    return { allyLog, enemyLog };
+}

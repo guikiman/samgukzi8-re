@@ -19,6 +19,7 @@ export type UnitAction = 'MOVE' | 'ATTACK' | 'TACTIC' | 'WAIT';
 export interface DeployableUnit {
     unitId: string;
     officerName: string;
+    officerId?: string;
     unitType: string;
     soldiers: number;
     morale: number;
@@ -126,7 +127,7 @@ export class BattleFrontend {
         // Convert deployable to battle unit
         const battleUnit: BattleUnit = {
             unitId: unit.unitId,
-            officerId: unit.unitId,
+            officerId: unit.officerId ?? unit.unitId,
             unitType: unit.unitType as BattleUnit['unitType'],
             soldiers: unit.soldiers,
             morale: unit.morale,

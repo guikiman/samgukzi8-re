@@ -918,6 +918,11 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .vm-log .vm-log-line:last-child { color: var(--text, #e8dcc8); }
 .vm-footer { display: flex; justify-content: center; }
 
+/* ---------- 평판 시각화 [11][27] ---------- */
+.rep-chip { font-size: 12px; font-weight: bold; padding: 1px 6px; border: 1px solid currentColor; border-radius: 3px; }
+.rep-badge { font-size: 11px; font-weight: bold; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; opacity: .95; }
+.od-rep-row { margin: -2px 0 6px; }
+
 /* ---------- 접근성: 모션 최소화 ---------- */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

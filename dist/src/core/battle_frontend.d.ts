@@ -11,6 +11,7 @@ export type UnitAction = 'MOVE' | 'ATTACK' | 'TACTIC' | 'WAIT';
 export interface DeployableUnit {
     unitId: string;
     officerName: string;
+    officerId?: string;
     unitType: string;
     soldiers: number;
     morale: number;

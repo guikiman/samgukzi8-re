@@ -92,4 +92,28 @@ export declare function finishVengeance(store: GameStore, actorId: string, targe
  * 엔진 월간 주기에서 호출. [C-인간관계]
  */
 export declare function processMonthlyVengeance(store: GameStore): VengeanceOutcome[];
+/**
+ * 복수 결과를 전투 유닛에 적용 [32][131-145]
+ *
+ * 성공: 적군 사기 −, 아군 전체 사기 +, 주도자 유닛 공격 보정
+ * 실패: 주도자 아군 사기 소폭 −
+ *
+ * 유닛 구조는 main.ts 전투 엔진과 느슨히 결합 (구조적 타이핑).
+ */
+export interface VengeanceUnit {
+    unitId: string;
+    officerId?: string;
+    morale: number;
+    baseAttack?: number;
+}
+/** 복수 성공 시 아군 사기 상승량 */
+export declare const VENGEANCE_ALLY_MORALE_BOOST = 8;
+/** 복수 성공 시 주도자 유닛 공격 보정 */
+export declare const VENGEANCE_ATTACK_BONUS = 6;
+/** 복수 실패 시 주도자 아군 사기 감소량 */
+export declare const VENGEANCE_FAIL_ALLY_MORALE_HIT = 5;
+export declare function applyVengeanceToUnits(outcome: VengeanceOutcome, allies: VengeanceUnit[], enemies: VengeanceUnit[]): {
+    allyLog: string | null;
+    enemyLog: string | null;
+};
 //# sourceMappingURL=vengeance_system.d.ts.map
