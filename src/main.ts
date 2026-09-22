@@ -22,6 +22,13 @@ import type { DiplomacyEngine } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
 import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter, applyVengeanceToUnits } from './core/vengeance_system.js';
+import * as vengeance_system from './core/vengeance_system.js';
+import * as free_officer_visit_system from './core/free_officer_visit_system.js';
+import * as captive_escape_system from './core/captive_escape_system.js';
+import * as roaming_event_system from './core/roaming_event_system.js';
+// 로밍 대화 + 재야 방문 시스템 [25][461-480]
+import { getRoamingDialogue, resolveRoamingDialogue, type RoamingDialogueData } from './core/roaming_dialogue_system.js';
+import { acceptVisit, declineVisit, type FreeOfficerVisit } from './core/free_officer_visit_system.js';
 import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
 import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects, type FeedbackKind } from './core/event_feedback_effects.js';
@@ -250,6 +257,121 @@ document.getElementById('vm-cards')!.addEventListener('click', (e) => {
 document.getElementById('vm-close')!.addEventListener('click', () => {
     document.getElementById('vengeance-modal')!.style.display = 'none';
     vmState = null;
+});
+
+// ============================================================
+// 로밍 이벤트 대화 모달 [25][461-480] — 방문객 응대 선택지
+// ============================================================
+interface RoamingModalState {
+    data: RoamingDialogueData;
+    cityId: string;
+    resolved: boolean;
+}
+let rmState: RoamingModalState | null = null;
+
+function openRoamingModal(cityId: string, visitorType: string, cityName: string, factionName: string | null): void {
+    rmState = { data: getRoamingDialogue(visitorType, cityName, factionName), cityId, resolved: false };
+    const modal = document.getElementById('roaming-modal')!;
+    document.getElementById('rm-title')!.textContent = rmState.data.title;
+    document.getElementById('rm-description')!.textContent = rmState.data.description;
+    renderRoamingOptions();
+    document.getElementById('rm-result')!.style.display = 'none';
+    document.getElementById('rm-close')!.style.display = 'none';
+    modal.style.display = 'flex';
+}
+
+function renderRoamingOptions(): void {
+    if (!rmState) return;
+    const optsEl = document.getElementById('rm-options')!;
+    optsEl.innerHTML = rmState.data.options.map(o =>
+        `<button class="rm-option" data-option="${o.id}">
+            <span class="rm-option-label">${o.label}</span>
+            <span class="rm-option-desc">${o.description}</span>
+        </button>`).join('');
+}
+
+function finishRoamingOption(optionId: string): void {
+    if (!rmState || rmState.resolved) return;
+    rmState.resolved = true;
+    const engineNow = engine!;
+    const storeNow = engineNow['store'] as import('./core/game_store.js').GameStore;
+    const resolution = resolveRoamingDialogue(storeNow, rmState.data.visitorType, rmState.cityId, optionId);
+    addLog(resolution.message);
+    // 연출 — 산적 진압 실패/약탈 계열은 경고 톤, 나머지는 밝은 톤 [191-200]
+    fireFeedback(rmState.data.visitorType === 'BANDIT' && optionId !== 'suppress' ? 'VENGEANCE_FAIL' : 'RESCUE');
+
+    const optsEl = document.getElementById('rm-options')!;
+    optsEl.innerHTML = '';
+    const resultEl = document.getElementById('rm-result')!;
+    resultEl.textContent = resolution.message + (resolution.effects.length ? `  (${resolution.effects.join(', ')})` : '');
+    resultEl.style.display = 'block';
+    document.getElementById('rm-close')!.style.display = 'inline-block';
+}
+
+document.getElementById('rm-options')!.addEventListener('click', (e) => {
+    if (!rmState || rmState.resolved) return;
+    const btn = (e.target as HTMLElement).closest('.rm-option') as HTMLElement | null;
+    if (!btn) return;
+    finishRoamingOption(btn.dataset.option ?? '');
+});
+
+document.getElementById('rm-close')!.addEventListener('click', () => {
+    document.getElementById('roaming-modal')!.style.display = 'none';
+    rmState = null;
+    // 대기열의 다음 재야 방문 모달 표시 [461-480]
+    if (pendingVisits.length > 0) {
+        openVisitModal(pendingVisits[0]);
+    }
+});
+
+// 재야 무장 출사 타진 — 플레이어 세력 도시 방문 시 선택 모달 [24][421-440]
+let pendingVisits: FreeOfficerVisit[] = [];
+
+function openVisitModal(visit: FreeOfficerVisit): void {
+    rmState = null;
+    const modal = document.getElementById('roaming-modal')!;
+    document.getElementById('rm-title')!.textContent = `🚶 출사 타진 — ${visit.cityName}`;
+    document.getElementById('rm-description')!.textContent =
+        `재야 무장 ${visit.officerName}이(가) 문객을 시켜 이르기를 — "천하가 어지럽으니 명주를 찾아 나서고자 하노라. 어떻게 하시겠습니까?" (수락 시 충성도 ${Math.round(visit.chance * 100)}% 계열 초기화)`;
+    const optsEl = document.getElementById('rm-options')!;
+    optsEl.innerHTML = `
+        <button class="rm-option" data-visit="accept">
+            <span class="rm-option-label">🤝 맞이한다</span>
+            <span class="rm-option-desc">${visit.officerName} 입사 (충성도 명성 비례)</span>
+        </button>
+        <button class="rm-option" data-visit="decline">
+            <span class="rm-option-label">🚪 사절한다</span>
+            <span class="rm-option-desc">재야 유지 — 다음 달 재타진 가능</span>
+        </button>`;
+    document.getElementById('rm-result')!.style.display = 'none';
+    document.getElementById('rm-close')!.style.display = 'none';
+    modal.style.display = 'flex';
+    (window as any).__pendingVisit = visit;
+}
+
+document.getElementById('rm-options')!.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.rm-option') as HTMLElement | null;
+    if (!btn || !btn.dataset.visit) return;
+    const visit = (window as any).__pendingVisit as FreeOfficerVisit | undefined;
+    if (!visit) return;
+    pendingVisits.shift(); // 대기열에서 제거 — 다음 방문 모달이 열릴 수 있도록
+    const engineNow = engine!;
+    const storeNow = engineNow['store'] as import('./core/game_store.js').GameStore;
+    if (btn.dataset.visit === 'accept') {
+        acceptVisit(storeNow, visit);
+        addLog(visit.message);
+        fireFeedback('RESCUE');
+    } else {
+        declineVisit(visit);
+        addLog(visit.message);
+    }
+    (window as any).__pendingVisit = null;
+    const optsEl = document.getElementById('rm-options')!;
+    optsEl.innerHTML = '';
+    const resultEl = document.getElementById('rm-result')!;
+    resultEl.textContent = visit.message;
+    resultEl.style.display = 'block';
+    document.getElementById('rm-close')!.style.display = 'inline-block';
 });
 
 // ============================================================
@@ -1692,6 +1814,16 @@ function init(): void {
         if (event.payload.roamingType === 'BANDIT') fireFeedback('VENGEANCE_FAIL'); // 산적 약탈 — 경고 톤
         else fireFeedback('RESCUE'); // 현자/상인 방문 — 밝은 톤
     });
+    // 재야 무장 출사 타진 이벤트 [24][421-440]
+    engine.subscribe('FREE_OFFICER_VISIT', (event: any) => {
+        addLog(`${event.payload.message}`);
+        fireFeedback('RESCUE');
+        // 플레이어 세력 도시 방문 → 선택 모달 (선택지 대기열) [461-480]
+        if (event.payload.needsPlayerChoice) {
+            pendingVisits.push(event.payload as FreeOfficerVisit);
+            if (pendingVisits.length === 1) openVisitModal(pendingVisits[0]);
+        }
+    });
     engine.subscribe('GAME_ENDING', (event: any) => {
         showEnding(event.payload.ending as string, event.payload.winner as string);
     });
@@ -1897,6 +2029,13 @@ window.__game = {
     getWorldCities: () => worldCities,
     getEngine: () => engine,
     getStore: () => engine?.['store'] ?? null,
+    /** E2E/테스트용: 코어 시스템 모듈 접근자 (동적 import 실패 우회) */
+    systems: {
+        freeOfficerVisit: () => free_officer_visit_system,
+        roamingEvent: () => roaming_event_system,
+        vengeance: () => vengeance_system,
+        captiveEscape: () => captive_escape_system,
+    },
     /** E2E 테스트용: 시나리오 지정 시작 (예: startScenario('05', 2)) */
     startScenario: (id: string, factionIndex: number) => {
         void loadScenarios().then(() => {

@@ -930,3 +930,20 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
         transition-duration: .01ms !important;
     }
 }
+
+/* ============================================================
+   로밍 이벤트 대화 모달 [25][461-480]
+   ============================================================ */
+#roaming-modal { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); }
+.rm-frame { width: min(460px, 92vw); max-height: 80vh; overflow-y: auto; background: linear-gradient(160deg, #1c1710 0%, #14100b 100%); border: 1px solid var(--gold-dim, #d4af37); border-radius: 10px; padding: 14px 16px; box-shadow: 0 12px 48px rgba(0,0,0,.6); }
+.rm-title { font-size: 1.05rem; font-weight: 700; color: var(--gold, #d4af37); letter-spacing: .04em; }
+.rm-header { margin-bottom: 8px; }
+.rm-description { color: var(--text, #e8dcc8); font-size: .9rem; line-height: 1.55; margin: 0 0 12px; }
+.rm-options { display: grid; gap: 6px; }
+.rm-option { display: flex; flex-direction: column; gap: 2px; background: rgba(212,175,55,.08); border: 1px solid rgba(212,175,55,.35); border-radius: 6px; color: var(--text, #e8dcc8); padding: 8px 12px; cursor: pointer; text-align: left; transition: background .15s ease, transform .1s ease; }
+.rm-option:hover:not(:disabled) { background: rgba(212,175,55,.2); transform: translateY(-1px); }
+.rm-option:disabled { opacity: .45; cursor: default; }
+.rm-option-label { font-weight: 700; font-size: .92rem; }
+.rm-option-desc { font-size: .78rem; opacity: .75; }
+.rm-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(212,175,55,.1); border: 1px solid rgba(212,175,55,.3); color: var(--text, #e8dcc8); font-size: .88rem; }
+.rm-footer { margin-top: 10px; text-align: right; }

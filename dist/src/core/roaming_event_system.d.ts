@@ -26,6 +26,8 @@ export interface RoamingEventResult {
     factionName: string | null;
     /** 게임 로그용 메시지 */
     message: string;
+    /** 플레이어 세력 도시 → 자동 적용 대신 대화 선택지 제공 [25][461-480] */
+    needsPlayerChoice: boolean;
 }
 /** 월간 처리 리포트 */
 export interface RoamingEventReport {

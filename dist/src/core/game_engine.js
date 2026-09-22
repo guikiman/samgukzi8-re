@@ -19,6 +19,7 @@ import { FactionDiplomacyAI } from './faction_diplomacy_ai.js';
 import { processMonthlyCaptiveEvents } from './captive_escape_system.js';
 import { processMonthlyVengeance } from './vengeance_system.js';
 import { processMonthlyRoamingEvents } from './roaming_event_system.js';
+import { processMonthlyFreeOfficerVisits } from './free_officer_visit_system.js';
 import { processMonthlySwornBrotherRescues } from './sworn_brother_rescue_system.js';
 import { processMonthlySwornBrotherPacts } from './sworn_brother_pact_system.js';
 export class GameEngine {
@@ -318,6 +319,29 @@ export class GameEngine {
                     turn: this.store.getGlobalState().turnCount,
                 });
             }
+            // 재야 무장 출사 타진 — 자발적 방문 등용 [24][421-440]
+            const visitReport = processMonthlyFreeOfficerVisits(this.store);
+            for (const visit of visitReport) {
+                console.log(`[Engine] ${visit.message}`);
+                this.emitEvent({
+                    id: `free_visit_${visit.officerId}_${Date.now()}`,
+                    type: 'FREE_OFFICER_VISIT',
+                    payload: {
+                        officerId: visit.officerId,
+                        officerName: visit.officerName,
+                        cityId: visit.cityId,
+                        cityName: visit.cityName,
+                        factionId: visit.factionId,
+                        factionName: visit.factionName,
+                        chance: visit.chance,
+                        needsPlayerChoice: visit.needsPlayerChoice,
+                        joined: visit.joined,
+                        message: visit.message,
+                    },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             // 세력 운명 판정 — 멸망/통일 [213]
             const fateReport = this.fateSystem.checkFates();
             for (const name of fateReport.destroyedFactionNames) {
@@ -340,6 +364,9 @@ export class GameEngine {
                 });
             }
             this.store.advanceTime();
+            // [결함 수정] 턴 중반 유지보수 이벤트(재야 방문/로밍/복수/구출 등)가
+            // 다음 턴 시작까지 배출되지 않아 UI가 1턴 늦게 반응하는 문제 해소
+            this.processEventQueue();
             console.log('[Engine] === Turn end ===');
         }
         finally {

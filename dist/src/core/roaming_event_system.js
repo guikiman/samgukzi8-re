@@ -79,6 +79,16 @@ export function processMonthlyRoamingEvents(store) {
             continue;
         const faction = city.ownerId ? store.getFaction(city.ownerId) : null;
         const factionName = faction?.name ?? null;
+        // 플레이어 세력 도시 → 선택지 대기 (자동 적용하지 않음) [25][461-480]
+        const needsPlayerChoice = faction?.isPlayerControlled === true;
+        if (needsPlayerChoice) {
+            events.push({
+                type: result.type, cityId: city.id, cityName: city.name, factionName,
+                needsPlayerChoice: true,
+                message: `📍 ${city.name}에 방문객이 찾아왔습니다 — 대기 중`,
+            });
+            continue;
+        }
         switch (result.type) {
             case 'SAGE': {
                 const ds = city.developmentStats;
@@ -90,6 +100,7 @@ export function processMonthlyRoamingEvents(store) {
                 });
                 events.push({
                     type: 'SAGE', cityId: city.id, cityName: city.name, factionName,
+                    needsPlayerChoice: false,
                     message: `🧙 현자가 ${city.name}을(를) 방문해 기술을 가르쳤습니다 (기술 +${SAGE_TECH_BOOST})`,
                 });
                 break;
@@ -103,6 +114,7 @@ export function processMonthlyRoamingEvents(store) {
                         });
                         events.push({
                             type: 'HERMIT', cityId: city.id, cityName: city.name, factionName,
+                            needsPlayerChoice: false,
                             message: `🍃 은자가 ${faction.name} 군주 ${leader.name}에게 선양을 전했습니다 (명성 +${HERMIT_FAME_BOOST})`,
                         });
                     }
@@ -116,6 +128,7 @@ export function processMonthlyRoamingEvents(store) {
                     });
                     events.push({
                         type: 'MERCHANT', cityId: city.id, cityName: city.name, factionName,
+                        needsPlayerChoice: false,
                         message: `🐫 상인단이 ${city.name}에서 교역했습니다 (자금 +${MERCHANT_PROFIT})`,
                     });
                 }
@@ -131,6 +144,7 @@ export function processMonthlyRoamingEvents(store) {
                 });
                 events.push({
                     type: 'TRAVELER', cityId: city.id, cityName: city.name, factionName,
+                    needsPlayerChoice: false,
                     message: `🧳 행상인이 온 사방의 소문을 전했습니다 (치안 +${TRAVELER_ORDER_BOOST})`,
                 });
                 break;
@@ -142,6 +156,7 @@ export function processMonthlyRoamingEvents(store) {
                 });
                 events.push({
                     type: 'BANDIT', cityId: city.id, cityName: city.name, factionName,
+                    needsPlayerChoice: false,
                     message: `🗡️ 산적이 ${city.name}을(를) 약탈했습니다 (자금 −${BANDIT_PLUNDER})`,
                 });
                 break;
