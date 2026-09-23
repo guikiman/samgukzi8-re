@@ -101,6 +101,14 @@ export class StrategicCommandManager {
         this.activeCampaigns.splice(idx, 1);
         return true;
     }
+    /**
+     * 도시 습격 명령 — [83] 플레이어 방랑군 재기 커맨드 (전략 포인트 30 소비)
+     * 판정 자체는 vagrant_monthly_actions.resolvePlayerRaid가 수행하며,
+     * 여기서는 전략 포인트 가용 여부만 확인한다.
+     */
+    orderRaid() {
+        return this.consumePoints(StrategicCommandManager.RAID_COST);
+    }
     /** [83] 방랑군 해산 — 군단 전체 해체 */
     disbandVagrantArmy() {
         this.activeCampaigns = [];
@@ -165,4 +173,6 @@ StrategicCommandManager.MAX_STRATEGY_POINTS = 100;
 StrategicCommandManager.POINTS_REGEN_PER_TURN = 20;
 StrategicCommandManager.CAMPAIGN_COST = 20;
 StrategicCommandManager.TRANSPORT_COST = 10;
+/** 도시 습격 커맨드 비용 [83] */
+StrategicCommandManager.RAID_COST = 30;
 //# sourceMappingURL=strategic_command_system.js.map

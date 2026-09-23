@@ -114,6 +114,12 @@ export declare class GameEngine {
             officerName: string;
             age: number;
         }>;
+        vagrant: Array<{
+            factionName: string;
+            kind: 'CONVERT' | 'RECRUIT' | 'RAID';
+            success: boolean;
+            message: string;
+        }>;
     };
     private processWeatherEffect;
     emitEvent(event: GameEvent): void;
@@ -126,6 +132,14 @@ export declare class GameEngine {
     terminateWorker(): void;
     /** 외교 엔진 접근자 (UI/AI 용) [70-73] */
     get diplomacyEngine(): DiplomacyEngine;
+    /**
+     * 플레이어 도시 습격 커맨드 [83] — 전략 포인트 30 소비 후 습격 판정.
+     * 플레이어 세력이 방랑군일 때만 가능. 성공 시 FACTION_REVIVED 이벤트.
+     */
+    playerRaidCity(targetCityId: CityID): {
+        success: boolean;
+        message: string;
+    };
     save(): {
         state: NormalizedState;
         globalState: GlobalState;

@@ -176,7 +176,7 @@ export class ClimateManager {
     getAllClimates() {
         return [...this.climates.values()];
     }
-    /** 날씨 → 수확 보정 매핑 */
+    /** 날씨 → 수확 보정 매핑 (월간 보고서 기후 시각화용 public) */
     static weatherToHarvest(weather) {
         switch (weather) {
             case 'SUNNY': return 1.2;

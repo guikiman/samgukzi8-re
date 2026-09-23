@@ -36,6 +36,11 @@ import { ChronicleManager } from './core/chronicle_system.js';
 import { resolveCityClimateRegion } from './core/monthly_report.js';
 import { computeVagrantStrength } from './core/vagrant_monthly_actions.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
+import { TutorialSystem } from './core/tutorial_system.js';
+import {
+    loadAccessibilitySettings, saveAccessibilitySettings, accessibilityAttributes,
+    renderAccessibilityPanel, type AccessibilitySettings,
+} from './core/accessibility_system.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
 // 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
 const engineRef: { current: import('./core/game_engine.js').GameEngine | null } = { current: null };
@@ -65,6 +70,8 @@ const btnBattle = document.getElementById('btn-battle') as HTMLButtonElement;
 const btnReport = document.getElementById('btn-report') as HTMLButtonElement;
 const btnDiplomacy = document.getElementById('btn-diplomacy') as HTMLButtonElement;
 const btnNextMonth = document.getElementById('btn-next-month') as HTMLButtonElement;
+const btnHelp = document.getElementById('btn-help') as HTMLButtonElement;
+const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement;
 
 // ============================================================
 // Engine State
@@ -1461,6 +1468,9 @@ async function startGame(world: BuiltWorld | null = null): Promise<void> {
     // 신규/이어하기 공통: 중국 전도에 도시 배치 (소속/영토 포함) [9][17]
     syncChinaMapCities();
 
+    // 첫 플레이 자동 튜토리얼 [461-480] — 신규 시작에서만 표시
+    if (world && tutorial.shouldShowOnStart()) openTutorial(true);
+
     isRunning = true;
     isPaused = false;
     btnPause.textContent = '일시정지';
@@ -1846,6 +1856,92 @@ saveSlotList.addEventListener('click', (e) => {
     const slotEl = (e.target as HTMLElement).closest('.ss-slot') as HTMLElement | null;
     if (slotEl) saveToSlot(slotEl.dataset.slot as SlotId);
 });
+
+// ============================================================
+// 튜토리얼 패널 [461-480] — 첫 플레이 자동 표시 + 도움말 버튼 재오픈
+// ============================================================
+const tutorialPanel = document.getElementById('tutorial-panel')!;
+const tutorial = new TutorialSystem();
+
+function renderTutorialStep(): void {
+    const r = tutorial.renderStep();
+    document.getElementById('tut-step-content')!.innerHTML = r.html;
+    (document.getElementById('tut-prev') as HTMLButtonElement).disabled = r.isFirst;
+    document.getElementById('tut-next')!.style.display = r.isLast ? 'none' : '';
+    document.getElementById('tut-skip')!.style.display = r.isLast ? 'none' : '';
+    document.getElementById('tut-finish')!.style.display = r.isLast ? '' : 'none';
+}
+
+function openTutorial(auto = false): void {
+    tutorial.start();
+    renderTutorialStep();
+    tutorialPanel.style.display = 'block';
+    if (auto) addLog('첫 플레이군요 — 게임 안내를 표시합니다. 「❓ 도움말」로 언제든 다시 볼 수 있습니다.');
+}
+
+function closeTutorial(markDone: boolean): void {
+    tutorialPanel.style.display = 'none';
+    if (markDone) tutorial.complete();
+}
+
+btnHelp.addEventListener('click', () => {
+    if (!tutorialPanel.style.display || tutorialPanel.style.display === 'none') openTutorial(false);
+    else closeTutorial(false);
+});
+document.getElementById('tut-prev')!.addEventListener('click', () => { tutorial.prev(); renderTutorialStep(); });
+document.getElementById('tut-next')!.addEventListener('click', () => { tutorial.next(); renderTutorialStep(); });
+document.getElementById('tut-skip')!.addEventListener('click', () => closeTutorial(true));
+document.getElementById('tut-finish')!.addEventListener('click', () => {
+    closeTutorial(true);
+    addLog('게임 안내 완료 — 중원 통일을 향해 나아가세요!');
+});
+document.getElementById('tut-close')!.addEventListener('click', () => closeTutorial(false));
+
+// ============================================================
+// 접근성 설정 패널 [461-480] — 글꼴 전환·글자 크기·화면 흔들림
+// ============================================================
+const a11yPanel = document.getElementById('a11y-panel')!;
+let a11ySettings: AccessibilitySettings = loadAccessibilitySettings();
+
+function applyAccessibility(): void {
+    for (const [k, v] of Object.entries(accessibilityAttributes(a11ySettings))) {
+        document.body.setAttribute(k, v);
+    }
+}
+
+function renderA11yPanel(): void {
+    const content = document.getElementById('a11y-content')!;
+    content.innerHTML = renderAccessibilityPanel(a11ySettings);
+    content.querySelectorAll('.a11y-option').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const el = btn as HTMLElement;
+            const font = el.dataset['font'] as AccessibilitySettings['fontMode'] | undefined;
+            const scale = el.dataset['scale'];
+            const shake = el.dataset['shake'];
+            const stat = el.dataset['stat'];
+            if (font) a11ySettings = { ...a11ySettings, fontMode: font };
+            else if (scale) a11ySettings = { ...a11ySettings, textScale: Number(scale) as AccessibilitySettings['textScale'] };
+            else if (shake) a11ySettings = { ...a11ySettings, screenShake: shake === 'on' };
+            else if (stat) a11ySettings = { ...a11ySettings, showStatNumbers: stat === 'on' };
+            saveAccessibilitySettings(a11ySettings);
+            applyAccessibility();
+            renderA11yPanel();
+        });
+    });
+}
+
+btnSettings.addEventListener('click', () => {
+    if (!a11yPanel.style.display || a11yPanel.style.display === 'none') {
+        renderA11yPanel();
+        a11yPanel.style.display = 'block';
+    } else {
+        a11yPanel.style.display = 'none';
+    }
+});
+document.getElementById('a11y-close')!.addEventListener('click', () => { a11yPanel.style.display = 'none'; });
+
+// 저장된 설정 복원 (페이지 로드 시 1회)
+applyAccessibility();
 
 // ============================================================
 // 外交 패널 [341-360] — 세력 관계도 + 수동 외교 제안

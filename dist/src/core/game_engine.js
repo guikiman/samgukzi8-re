@@ -29,6 +29,7 @@ import { StrategicCommandManager } from './strategic_command_system.js';
 import { LifeSimulator } from './life_simulator.js';
 import { MetaManager, LegacyManager, MetaDataManager } from './meta_systems.js';
 import { IntelligenceManager, NarrativeManager, ClimateManager } from './intelligence_narrative_climate.js';
+import { processVagrantMonthlyActions, resolvePlayerRaid } from './vagrant_monthly_actions.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
@@ -39,7 +40,7 @@ export class GameEngine {
          * processPortedSystemsMonthly가 채우고, 월간 보고서(MonthlyReportSystem)가 peek한다.
          * peekMonthlyPortedLog(hasRead=true)로 읽으면 비워진다.
          */
-        this.portedMonthlyLog = { campaigns: [], transports: [], collapsedNetworks: [], retired: [] };
+        this.portedMonthlyLog = { campaigns: [], transports: [], collapsedNetworks: [], retired: [], vagrant: [] };
         this.store = store ?? gameStore;
         this.commandQueue = new CommandQueue(200);
         this.aiProcessor = new AITurnProcessor(this.store, 50);
@@ -369,8 +370,20 @@ export class GameEngine {
                     turn: this.store.getGlobalState().turnCount,
                 });
             }
-            // 세력 운명 판정 — 멸망/통일 [213]
-            const fateReport = this.fateSystem.checkFates();
+            // 세력 운명 판정 — 멸망/통일/방랑군 재기 [83][213]
+            // 무장이 남은 세력은 제거 대신 방랑군으로 전환 — playerFactionId 유효성 보장
+            const fateReport = this.fateSystem.checkFatesWithVagrantRevival(true);
+            for (const v of fateReport.vagrantConversions ?? []) {
+                console.log(`[Engine] 방랑군 전환: ${v.factionName} (직속 ${v.keptOfficers}, 이탈 ${v.releasedOfficers})`);
+                this.portedMonthlyLog.vagrant.push({ factionName: v.factionName, kind: 'CONVERT', success: true, message: v.message });
+                this.emitEvent({
+                    id: `vagrant_${v.factionId}_${Date.now()}`,
+                    type: 'FACTION_VAGRANT',
+                    payload: { factionId: v.factionId, factionName: v.factionName, keptOfficers: v.keptOfficers, releasedOfficers: v.releasedOfficers, message: v.message },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
             for (const name of fateReport.destroyedFactionNames) {
                 console.log(`[Engine] 세력 멸망: ${name}`);
                 this.emitEvent({
@@ -647,6 +660,32 @@ export class GameEngine {
                 });
             }
         }
+        // 5) 방랑군 재기 행동 [83][421-440] — 재야 등용 + 도시 습격 → 재기(FACTION_REVIVED) 경로
+        const vagrantResults = processVagrantMonthlyActions(this.store);
+        for (const r of vagrantResults) {
+            console.log(`[Engine] 방랑군: ${r.message}`);
+            this.portedMonthlyLog.vagrant.push({
+                factionName: r.factionName,
+                kind: r.kind === 'RAID' ? 'RAID' : 'RECRUIT',
+                success: r.success,
+                message: r.message,
+            });
+            this.emitEvent({
+                id: `vagrant_action_${r.factionId}_${r.kind}_${Date.now()}`,
+                type: r.kind === 'RAID' && r.success ? 'FACTION_REVIVED' : 'VAGRANT_ACTION',
+                payload: {
+                    factionId: r.factionId,
+                    factionName: r.factionName,
+                    kind: r.kind,
+                    success: r.success,
+                    capturedCityId: r.capturedCityId ?? null,
+                    recruitedOfficerId: r.recruitedOfficerId ?? null,
+                    message: r.message,
+                },
+                timestamp: Date.now(),
+                turn,
+            });
+        }
     }
     /**
      * 이번 달 포팅 시스템 동향 peek [76-85][321-340][341-360][421-438]
@@ -658,12 +697,14 @@ export class GameEngine {
             transports: [...this.portedMonthlyLog.transports],
             collapsedNetworks: [...this.portedMonthlyLog.collapsedNetworks],
             retired: [...this.portedMonthlyLog.retired],
+            vagrant: [...this.portedMonthlyLog.vagrant],
         };
         if (consume) {
             this.portedMonthlyLog.campaigns = [];
             this.portedMonthlyLog.transports = [];
             this.portedMonthlyLog.collapsedNetworks = [];
             this.portedMonthlyLog.retired = [];
+            this.portedMonthlyLog.vagrant = [];
         }
         return snapshot;
     }
@@ -778,6 +819,38 @@ export class GameEngine {
     /** 외교 엔진 접근자 (UI/AI 용) [70-73] */
     get diplomacyEngine() {
         return this.diplomacy;
+    }
+    /**
+     * 플레이어 도시 습격 커맨드 [83] — 전략 포인트 30 소비 후 습격 판정.
+     * 플레이어 세력이 방랑군일 때만 가능. 성공 시 FACTION_REVIVED 이벤트.
+     */
+    playerRaidCity(targetCityId) {
+        const gs = this.store.getGlobalState();
+        const pf = gs.playerFactionId;
+        const faction = pf ? this.store.getFaction(pf) : null;
+        if (!faction)
+            return { success: false, message: '세력을 찾을 수 없습니다.' };
+        if (!faction.isVagrant)
+            return { success: false, message: '습격은 방랑군 상태에서만 가능합니다.' };
+        if (!this.strategicCommand.orderRaid()) {
+            return { success: false, message: `전략 포인트가 부족합니다 (필요 30, 현재 ${this.strategicCommand.getStrategyPoints()}).` };
+        }
+        const outcome = resolvePlayerRaid(this.store, pf, targetCityId);
+        this.emitEvent({
+            id: `player_raid_${targetCityId}_${Date.now()}`,
+            type: outcome.success ? 'FACTION_REVIVED' : 'VAGRANT_ACTION',
+            payload: {
+                factionId: pf,
+                factionName: faction.name,
+                kind: 'RAID',
+                success: outcome.success,
+                capturedCityId: outcome.capturedCityId ?? null,
+                message: outcome.message,
+            },
+            timestamp: Date.now(),
+            turn: gs.turnCount,
+        });
+        return outcome;
     }
     save() {
         return {

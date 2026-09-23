@@ -49,6 +49,12 @@ export declare class RelationshipGraphViewer {
     }>, relationships: RelationshipEdge[], centerOfficerId?: string): GraphLayout;
     layoutGraph(graph: GraphLayout, width: number, height: number): GraphLayout;
     attachCanvas(canvas: HTMLCanvasElement): void;
+    /**
+     * [269 성능] 노드 id → 인덱스 Map. render/exportSVG에서 링크별 nodes.find() O(N·E)
+     * 스캔을 O(1) 조회로 대체 — 1,000노드·5,000엣지에서 프레임당 수백만 번의 선형 스캔 제거.
+     */
+    private nodeIndex;
+    private rebuildNodeIndex;
     render(graph: GraphLayout): void;
     startAutoRender(graph: GraphLayout, fps?: number): void;
     stopAutoRender(): void;

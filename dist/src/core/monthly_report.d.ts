@@ -62,7 +62,29 @@ export interface PortedMonthlySection {
         officerName: string;
         age: number;
     }>;
+    /** [83] 방랑군 동향 — 전환/등용/습격/재기 */
+    vagrant: Array<{
+        factionName: string;
+        kind: 'CONVERT' | 'RECRUIT' | 'RAID';
+        success: boolean;
+        message: string;
+    }>;
+    /** 도시별 기후 표 [321-340] — 소유 세력 포함. climates가 비어도 도시 행은 표시 */
+    cityClimates: Array<{
+        cityName: string;
+        regionId: string;
+        weather: string;
+        temperature: number;
+        harvestModifier: number;
+        ownerId: string | null;
+    }>;
 }
+/**
+ * 도시 → 기후 지역 매핑 [321-340]
+ * 거점의 지리적 위치(위도/강수)에 따라 4개 기후권으로 배정.
+ * 도시명에 지역 키워드가 포함되면 해당 기후권, 그 외에는 지도 좌표로 결정.
+ */
+export declare function resolveCityClimateRegion(cityName: string, mapX?: number, mapY?: number): string;
 export declare class MonthlyReportSystem {
     private store;
     /** 엔진이 수집한 최근 월간 포팅 시스템 요약 peek (없으면 섹션 생략) */

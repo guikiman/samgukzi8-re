@@ -28,7 +28,11 @@ import { acceptVisit, declineVisit } from './core/free_officer_visit_system.js';
 import { getReputationDiplomacyModifier, describeReputationModifier } from './core/reputation_effect_system.js';
 import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects } from './core/event_feedback_effects.js';
+import { resolveCityClimateRegion } from './core/monthly_report.js';
+import { computeVagrantStrength } from './core/vagrant_monthly_actions.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
+import { TutorialSystem } from './core/tutorial_system.js';
+import { loadAccessibilitySettings, saveAccessibilitySettings, accessibilityAttributes, renderAccessibilityPanel, } from './core/accessibility_system.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
 // 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
 const engineRef = { current: null };
@@ -54,6 +58,8 @@ const btnBattle = document.getElementById('btn-battle');
 const btnReport = document.getElementById('btn-report');
 const btnDiplomacy = document.getElementById('btn-diplomacy');
 const btnNextMonth = document.getElementById('btn-next-month');
+const btnHelp = document.getElementById('btn-help');
+const btnSettings = document.getElementById('btn-settings');
 // ============================================================
 // Engine State
 // ============================================================
@@ -661,6 +667,9 @@ function syncChinaMapCities() {
             const fac = c.ownerId ? store.getFaction(c.ownerId) : null;
             const x = c.mapX ?? (c.hexCoord.q + 4) / 8;
             const y = c.mapY ?? (c.hexCoord.r + 4) / 8;
+            // [321-340] 지도 날씨 오버레이 — 도시 기후권의 현재 날씨/수확 보정
+            const regionId = resolveCityClimateRegion(c.name, c.mapX, c.mapY);
+            const climate = engine.climateManager.getClimate(regionId);
             return {
                 id: c.id,
                 name: c.name,
@@ -670,6 +679,8 @@ function syncChinaMapCities() {
                 isPlayer: c.ownerId === gs.playerFactionId,
                 garrison: c.development * 100,
                 isSelected: false,
+                weather: climate?.weather,
+                harvestModifier: climate?.harvestModifier,
             };
         });
         chinaMap.setCities(worldCities);
@@ -898,6 +909,8 @@ function renderCityDetailPanel(city, faction, switched) {
     renderExpeditionSection(city, isPlayerCity);
     // 등용 섹션 [24]: 내 도시 + 도시에 재야 무장이 있을 때
     renderRecruitSection(city, isPlayerCity);
+    // [83] 방랑군 습격 섹션 — 플레이어 세력이 방랑군이고, 보고 있는 도시가 적/무주 도시일 때
+    renderVagrantRaidSection(city, faction, isPlayerCity);
     // 전환 시 콘텐츠 페이드 애니메이션 재생 (같은 도시 재클릭 시 생략)
     if (switched) {
         cityDetailPanel.querySelectorAll('.cdp-section, .cdp-header').forEach(el => {
@@ -907,6 +920,78 @@ function renderCityDetailPanel(city, faction, switched) {
         });
     }
     cityDetailPanel.style.display = 'block';
+}
+/**
+ * [83] 방랑군 습격 섹션 — 플레이어 세력이 방랑군일 때 열리는 재기 커맨드.
+ * 전략 포인트 30 소비, 인접 도시(자기 도시 제외)를 대상으로 습격 판정.
+ */
+function renderVagrantRaidSection(city, faction, isPlayerCity) {
+    const section = document.getElementById('cdp-raid-section');
+    const info = document.getElementById('cdp-raid-info');
+    if (!engine) {
+        section.style.display = 'none';
+        return;
+    }
+    const gs = engine['store'].getGlobalState();
+    const pf = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
+    // 방랑군 + 비(非)자기 도시에서만 표시 (자기 도시면 일반 출진 섹션이 이미 활성)
+    if (!pf?.isVagrant || isPlayerCity) {
+        section.style.display = 'none';
+        return;
+    }
+    const pts = engine.strategicCommand.getStrategyPoints();
+    const canAfford = pts >= 30;
+    info.textContent = `⚔️ 방랑군 재기 — 습격 대상을 선택하세요 (전략 포인트 30 소비, 보유 ${pts})`;
+    info.style.color = canAfford ? '' : '#e07a6a';
+    // [83] 습격 대상 목록 — 최약 도시 순 (현재 보고 있는 도시 포함). 방어/역량 임계 표시
+    const targetsEl = document.getElementById('cdp-raid-targets');
+    const store = engine['store'];
+    const raidStrength = (() => {
+        try {
+            return computeVagrantStrength(store, gs.playerFactionId);
+        }
+        catch {
+            return 0;
+        }
+    })();
+    const raidCandidates = store.getAllCities()
+        .filter(c => c.ownerId !== gs.playerFactionId)
+        .sort((a, b) => a.defense - b.defense)
+        .slice(0, 5);
+    targetsEl.innerHTML = raidCandidates.map(c => {
+        const reachable = raidStrength >= c.defense * 10;
+        const isCurrent = c.id === city.id;
+        return `<div class="cdp-raid-target cdp-officer-clickable" data-city-id="${c.id}" ` +
+            `style="display:flex;justify-content:space-between;padding:3px 6px;margin:2px 0;` +
+            `border:1px solid ${isCurrent ? 'var(--gold-dim)' : 'rgba(212,175,55,.12)'};border-radius:4px;` +
+            `cursor:${reachable && canAfford ? 'pointer' : 'not-allowed'};opacity:${reachable ? 1 : 0.45}">` +
+            `<span>${isCurrent ? '📌 ' : ''}${c.name} <span style="opacity:.6">방어 ${c.defense}</span></span>` +
+            `<span style="color:${reachable ? '#7ec97e' : '#e07a6a'};font-size:.9em">${reachable ? '습격 가능' : '역량 부족'}</span></div>`;
+    }).join('');
+    // 대상 클릭 → 해당 도시 선택 후 습격 실행
+    targetsEl.querySelectorAll('.cdp-raid-target').forEach(el => {
+        el.addEventListener('click', () => {
+            const targetId = el.dataset.cityId;
+            const target = targetId ? store.getCity(targetId) : null;
+            if (!target)
+                return;
+            const outcome = engine.playerRaidCity(target.id);
+            addLog(outcome.message);
+            const resultEl = document.getElementById('cdp-action-result');
+            if (resultEl) {
+                resultEl.textContent = outcome.message;
+                resultEl.dataset.cityId = target.id;
+            }
+            if (outcome.success) {
+                syncChinaMapCities();
+                const fac = gs.playerFactionId ? store.getFaction(gs.playerFactionId) : null;
+                renderCityDetailPanel(target, fac, true);
+            }
+        });
+    });
+    const btn = document.getElementById('cdp-raid-btn');
+    btn.style.display = 'none'; // 목록 클릭 방식으로 대체 — 기존 단일 버튼은 숨김
+    section.style.display = 'block';
 }
 /**
  * 출진 섹션 렌더링 [32] — 플레이어 도시에서 인접 적 도시를 대상으로 표시
@@ -1212,7 +1297,13 @@ function renderFrame(_dt) {
         battleFrontend.render(ctx, canvas.width, canvas.height);
     }
     else {
-        // 월드 화면: 중국 전도 [9]
+        // 월드 화면: 중국 전도 [9] + 계절 톤 [1057][321-340]
+        try {
+            const gsSeason = engine ? monthToSeason(engine['store'].getGlobalState().time.month) : null;
+            if (chinaMap['seasonTint'] !== gsSeason)
+                chinaMap.setSeasonTint(gsSeason);
+        }
+        catch { /* 엔진 미초기화 */ }
         chinaMap.render();
         const state = engine?.getCurrentPhase();
         if (state) {
@@ -1285,6 +1376,9 @@ async function startGame(world = null) {
     }
     // 신규/이어하기 공통: 중국 전도에 도시 배치 (소속/영토 포함) [9][17]
     syncChinaMapCities();
+    // 첫 플레이 자동 튜토리얼 [461-480] — 신규 시작에서만 표시
+    if (world && tutorial.shouldShowOnStart())
+        openTutorial(true);
     isRunning = true;
     isPaused = false;
     btnPause.textContent = '일시정지';
@@ -1656,6 +1750,91 @@ saveSlotList.addEventListener('click', (e) => {
         saveToSlot(slotEl.dataset.slot);
 });
 // ============================================================
+// 튜토리얼 패널 [461-480] — 첫 플레이 자동 표시 + 도움말 버튼 재오픈
+// ============================================================
+const tutorialPanel = document.getElementById('tutorial-panel');
+const tutorial = new TutorialSystem();
+function renderTutorialStep() {
+    const r = tutorial.renderStep();
+    document.getElementById('tut-step-content').innerHTML = r.html;
+    document.getElementById('tut-prev').disabled = r.isFirst;
+    document.getElementById('tut-next').style.display = r.isLast ? 'none' : '';
+    document.getElementById('tut-skip').style.display = r.isLast ? 'none' : '';
+    document.getElementById('tut-finish').style.display = r.isLast ? '' : 'none';
+}
+function openTutorial(auto = false) {
+    tutorial.start();
+    renderTutorialStep();
+    tutorialPanel.style.display = 'block';
+    if (auto)
+        addLog('첫 플레이군요 — 게임 안내를 표시합니다. 「❓ 도움말」로 언제든 다시 볼 수 있습니다.');
+}
+function closeTutorial(markDone) {
+    tutorialPanel.style.display = 'none';
+    if (markDone)
+        tutorial.complete();
+}
+btnHelp.addEventListener('click', () => {
+    if (!tutorialPanel.style.display || tutorialPanel.style.display === 'none')
+        openTutorial(false);
+    else
+        closeTutorial(false);
+});
+document.getElementById('tut-prev').addEventListener('click', () => { tutorial.prev(); renderTutorialStep(); });
+document.getElementById('tut-next').addEventListener('click', () => { tutorial.next(); renderTutorialStep(); });
+document.getElementById('tut-skip').addEventListener('click', () => closeTutorial(true));
+document.getElementById('tut-finish').addEventListener('click', () => {
+    closeTutorial(true);
+    addLog('게임 안내 완료 — 중원 통일을 향해 나아가세요!');
+});
+document.getElementById('tut-close').addEventListener('click', () => closeTutorial(false));
+// ============================================================
+// 접근성 설정 패널 [461-480] — 글꼴 전환·글자 크기·화면 흔들림
+// ============================================================
+const a11yPanel = document.getElementById('a11y-panel');
+let a11ySettings = loadAccessibilitySettings();
+function applyAccessibility() {
+    for (const [k, v] of Object.entries(accessibilityAttributes(a11ySettings))) {
+        document.body.setAttribute(k, v);
+    }
+}
+function renderA11yPanel() {
+    const content = document.getElementById('a11y-content');
+    content.innerHTML = renderAccessibilityPanel(a11ySettings);
+    content.querySelectorAll('.a11y-option').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const el = btn;
+            const font = el.dataset['font'];
+            const scale = el.dataset['scale'];
+            const shake = el.dataset['shake'];
+            const stat = el.dataset['stat'];
+            if (font)
+                a11ySettings = { ...a11ySettings, fontMode: font };
+            else if (scale)
+                a11ySettings = { ...a11ySettings, textScale: Number(scale) };
+            else if (shake)
+                a11ySettings = { ...a11ySettings, screenShake: shake === 'on' };
+            else if (stat)
+                a11ySettings = { ...a11ySettings, showStatNumbers: stat === 'on' };
+            saveAccessibilitySettings(a11ySettings);
+            applyAccessibility();
+            renderA11yPanel();
+        });
+    });
+}
+btnSettings.addEventListener('click', () => {
+    if (!a11yPanel.style.display || a11yPanel.style.display === 'none') {
+        renderA11yPanel();
+        a11yPanel.style.display = 'block';
+    }
+    else {
+        a11yPanel.style.display = 'none';
+    }
+});
+document.getElementById('a11y-close').addEventListener('click', () => { a11yPanel.style.display = 'none'; });
+// 저장된 설정 복원 (페이지 로드 시 1회)
+applyAccessibility();
+// ============================================================
 // 外交 패널 [341-360] — 세력 관계도 + 수동 외교 제안
 // ============================================================
 const diplomacyPanel = document.getElementById('diplomacy-panel');
@@ -1993,7 +2172,8 @@ function showMonthlyReport() {
     if (!engine || !isRunning)
         return;
     // 포팅 시스템 월간 동향 peek (읽기 전용 — 다음 달 보고서를 위해 버퍼 유지) [76-85][321-340][341-360][421-438]
-    const report = new MonthlyReportSystem(engine['store'], () => ({
+    const store = engine['store'];
+    const report = new MonthlyReportSystem(store, () => ({
         ...engine.peekMonthlyPortedLog(false),
         climates: engine.climateManager.getAllClimates().map(c => ({
             regionId: c.regionId,
@@ -2001,6 +2181,19 @@ function showMonthlyReport() {
             temperature: c.temperature,
             harvestModifier: c.harvestModifier,
         })),
+        // 도시별 기후 표 [321-340] — 도시 위치를 기후권에 매핑해 소유 세력과 함께 표시
+        cityClimates: store.getAllCities().map(c => {
+            const regionId = resolveCityClimateRegion(c.name, c.mapX, c.mapY);
+            const climate = engine.climateManager.getClimate(regionId);
+            return {
+                cityName: c.name,
+                regionId,
+                weather: climate?.weather ?? 'SUNNY',
+                temperature: climate?.temperature ?? 18,
+                harvestModifier: climate?.harvestModifier ?? 1.0,
+                ownerId: c.ownerId,
+            };
+        }),
     })).generate();
     const panel = document.getElementById('monthly-report-panel');
     document.getElementById('mr-title').textContent = `月報 — ${report.year}년 ${report.month}월 보고`;
@@ -2035,9 +2228,34 @@ function renderMonthlyPortedSection(ported) {
     for (const n of ported.collapsedNetworks) {
         rows.push(`<div class="mr-row"><span class="mr-name">🕸️ 첩보망 붕괴</span><span class="mr-val">${n.cityId} — 유지비 미납 (${n.factionId})</span></div>`);
     }
+    // 방랑군 동향 [83] — 전환/등용/습격/재기
+    for (const v of ported.vagrant ?? []) {
+        const icon = v.kind === 'CONVERT' ? '🏚️' : v.kind === 'RAID' ? '⚔️' : '🤝';
+        const label = v.kind === 'CONVERT' ? '방랑군 몰락' : v.kind === 'RAID' ? (v.success ? '습격 점령' : '습격 격퇴') : (v.success ? '재야 영입' : '영입 실패');
+        rows.push(`<div class="mr-row"><span class="mr-name">${icon} ${label}</span><span class="mr-val" style="${v.success ? '' : 'opacity:.7'}">${v.message.replace(/^\\[.*?\\]\\s*/, '')}</span></div>`);
+    }
     const weatherIcon = (w) => ({ SUNNY: '☀️', CLOUDY: '☁️', RAIN: '🌧️', STORM: '⛈️', SNOW: '❄️', FOG: '🌫️', HEATWAVE: '🔥' }[w] ?? '🌤️');
     if (ported.climates.length > 0) {
         rows.push(`<div class="mr-row"><span class="mr-name">${weatherIcon(ported.climates[0].weather)} 기후</span><span class="mr-val">${ported.climates.map(c => `${c.regionId} ${c.weather} ${c.temperature}°C (수확 ×${c.harvestModifier})`).join(' · ')}</span></div>`);
+    }
+    // 도시별 기후·수확 보정 표 [321-340]
+    if (ported.cityClimates && ported.cityClimates.length > 0) {
+        const rowsHtml = ported.cityClimates.map(cc => {
+            const icon = weatherIcon(cc.weather);
+            const modPct = Math.round(cc.harvestModifier * 100);
+            const modColor = cc.harvestModifier >= 1.0 ? '#7ec97e' : (cc.harvestModifier >= 0.8 ? '#e0c26a' : '#e07a6a');
+            const ownerTag = cc.ownerId ? `<span style="opacity:.6">(${cc.ownerId})</span>` : '<span style="opacity:.4">(무주)</span>';
+            return `<tr>` +
+                `<td style="padding:2px 8px">${icon} ${cc.cityName}</td>` +
+                `<td style="padding:2px 8px;opacity:.65">${cc.regionId}</td>` +
+                `<td style="padding:2px 8px">${cc.temperature}°C</td>` +
+                `<td style="padding:2px 8px;color:${modColor};font-weight:700">×${cc.harvestModifier} (${modPct}%)</td>` +
+                `<td style="padding:2px 8px">${ownerTag}</td></tr>`;
+        }).join('');
+        rows.push(`<div class="mr-row"><table style="width:100%;border-collapse:collapse;font-size:.72rem">` +
+            `<tr style="opacity:.55"><th style="text-align:left;padding:2px 8px">도시</th><th style="text-align:left;padding:2px 8px">기후권</th>` +
+            `<th style="text-align:left;padding:2px 8px">기온</th><th style="text-align:left;padding:2px 8px">수확 보정</th><th style="text-align:left;padding:2px 8px">소유</th></tr>` +
+            rowsHtml + `</table></div>`);
     }
     for (const r of ported.retired) {
         rows.push(`<div class="mr-row"><span class="mr-name">🌾 은퇴</span><span class="mr-val">${r.officerName} (${r.age}세) — 전장을 떠났습니다</span></div>`);

@@ -20,6 +20,8 @@
             <button id="btn-pause" class="game-btn" disabled>일시정지</button>
             <button id="btn-save" class="game-btn" disabled>저장</button>
             <button id="btn-slots" class="game-btn" disabled>💾 슬롯</button>
+            <button id="btn-help" class="game-btn">❓ 도움말</button>
+            <button id="btn-settings" class="game-btn">⚙️ 설정</button>
             <button id="btn-diplomacy" class="game-btn" disabled>🕊️ 외교</button>
             <button id="btn-report" class="game-btn" disabled>📊 보고</button>
             <button id="btn-battle" class="game-btn" disabled>⚔️ 전투</button>
@@ -167,6 +169,30 @@
     </div>
     <div id="ss-slot-list" class="ss-slot-list"></div>
     <div class="ss-hint">슬롯 클릭 = 저장 · 항목의 불러오기 = 해당 슬롯에서 시작</div>
+</div>
+
+<!-- 튜토리얼 패널 [461-480] -->
+<div id="tutorial-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name">指南 — 게임 안내</span>
+        <button id="tut-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div id="tut-step-content"></div>
+    <div class="tut-controls">
+        <button id="tut-prev" class="game-btn">◀ 이전</button>
+        <button id="tut-skip" class="game-btn tut-skip">건너뛰기</button>
+        <button id="tut-next" class="game-btn">다음 ▶</button>
+        <button id="tut-finish" class="game-btn primary" style="display:none;">시작하기</button>
+    </div>
+</div>
+
+<!-- 접근성 설정 패널 [461-480] -->
+<div id="a11y-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name">設定 — 화면 설정</span>
+        <button id="a11y-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div id="a11y-content"></div>
 </div>
 
 <!-- 외교 패널 [341-360] -->

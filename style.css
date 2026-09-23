@@ -33,6 +33,19 @@ body {
 }
 
 /* 계절 테마 변수 — [1057] 계절별 CSS 테마 */
+/* 접근성 옵션 [461-480] — body data-* 속성으로 전역 반영 */
+body[data-font-mode="sans"] body, body[data-font-mode="sans"] .panel,
+body[data-font-mode="sans"] button { font-family: var(--font-sans); }
+body[data-font-mode="contrast"] { --text-main: #fff8ec; --text-faint: #d8c8a0; }
+body[data-font-mode="contrast"] .panel,
+body[data-font-mode="contrast"] .cdp-city-name,
+body[data-font-mode="contrast"] button { font-weight: 800; text-shadow: 0 0 2px rgba(0,0,0,.9); }
+body[data-text-scale="0.9"] { font-size: 14.4px; }
+body[data-text-scale="1.15"] { font-size: 18.4px; }
+body[data-text-scale="1.3"] { font-size: 20.8px; }
+body[data-screen-shake="off"] * { animation: none !important; }
+body[data-stat-numbers="off"] .stat-num { display: none; }
+
 body[data-season="spring"] { --season-accent: #e88fb0; --season-glow: rgba(232, 143, 176, 0.16); }
 body[data-season="summer"] { --season-accent: #5fb5e8; --season-glow: rgba(95, 181, 232, 0.16); }
 body[data-season="autumn"] { --season-accent: #e8a05f; --season-glow: rgba(232, 160, 95, 0.18); }
@@ -765,6 +778,88 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
     font-size: 10px;
     color: var(--text-faint);
     text-align: center;
+}
+
+/* ---------- 튜토리얼 패널 [461-480] ---------- */
+#tutorial-panel {
+    position: absolute;
+    top: 90px;
+    right: 16px;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    background: var(--panel-bg, rgba(20, 16, 12, 0.96));
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    padding: 14px;
+    z-index: 400;
+}
+.tut-title {
+    color: var(--gold-bright);
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.tut-body {
+    color: var(--text-main, #e8dcc8);
+    font-size: 12px;
+    line-height: 1.7;
+    margin-bottom: 8px;
+}
+.tut-hint {
+    font-size: 10px;
+    color: var(--text-faint, #9a8a6a);
+    margin-bottom: 8px;
+}
+.tut-dots { display: flex; gap: 5px; justify-content: center; margin: 8px 0; }
+.tut-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: rgba(212, 175, 55, 0.25);
+    transition: background .2s, transform .2s;
+}
+.tut-dot.active { background: var(--gold-bright); transform: scale(1.3); }
+.tut-dot.done { background: var(--gold); }
+.tut-controls { display: flex; gap: 6px; margin-top: 8px; }
+.tut-controls .game-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
+.tut-skip { opacity: 0.75; }
+
+/* ---------- 접근성 설정 패널 [461-480] ---------- */
+#a11y-panel {
+    position: absolute;
+    top: 90px;
+    right: 16px;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    background: var(--panel-bg, rgba(20, 16, 12, 0.96));
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    padding: 14px;
+    z-index: 400;
+}
+.a11y-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 0;
+}
+.a11y-label { font-size: 12px; color: var(--gold-bright); white-space: nowrap; }
+.a11y-opts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.a11y-option {
+    font-size: 10px;
+    padding: 3px 8px;
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-main, #e8dcc8);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+.a11y-option:hover { background: rgba(212, 175, 55, 0.12); }
+.a11y-option.active {
+    background: rgba(212, 175, 55, 0.22);
+    border-color: var(--gold-bright);
+    color: var(--gold-bright);
+    font-weight: bold;
 }
 
 /* ---------- 외교 패널 [341-360] ---------- */

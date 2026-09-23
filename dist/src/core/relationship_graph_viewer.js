@@ -23,6 +23,11 @@ export class RelationshipGraphViewer {
             "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
             "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
         ];
+        /**
+         * [269 성능] 노드 id → 인덱스 Map. render/exportSVG에서 링크별 nodes.find() O(N·E)
+         * 스캔을 O(1) 조회로 대체 — 1,000노드·5,000엣지에서 프레임당 수백만 번의 선형 스캔 제거.
+         */
+        this.nodeIndex = new Map();
     }
     buildGraph(officers, relationships, centerOfficerId) {
         const nodeMap = new Map();
@@ -80,20 +85,28 @@ export class RelationshipGraphViewer {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
     }
+    rebuildNodeIndex(nodes) {
+        this.nodeIndex = new Map();
+        for (let i = 0; i < nodes.length; i++)
+            this.nodeIndex.set(nodes[i].id, i);
+    }
     render(graph) {
         if (!this.ctx || !this.canvas)
             return;
         const ctx = this.ctx;
         const canvas = this.canvas;
+        this.rebuildNodeIndex(graph.nodes);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
         ctx.translate(this.viewport.x, this.viewport.y);
         ctx.scale(this.viewport.zoom, this.viewport.zoom);
         for (const link of graph.links) {
-            const source = graph.nodes.find((n) => n.id === link.source);
-            const target = graph.nodes.find((n) => n.id === link.target);
-            if (!source || !target)
+            const si = this.nodeIndex.get(link.source);
+            const ti = this.nodeIndex.get(link.target);
+            if (si === undefined || ti === undefined)
                 continue;
+            const source = graph.nodes[si];
+            const target = graph.nodes[ti];
             ctx.beginPath();
             ctx.moveTo(source.x, source.y);
             ctx.lineTo(target.x, target.y);
@@ -135,10 +148,14 @@ export class RelationshipGraphViewer {
     }
     exportSVG(graph, width = 800, height = 600) {
         const layout = this.layoutGraph(graph, width, height);
+        // [269 성능] 동일 O(N·E) 병목을 Map 인덱스로 해소
+        const index = new Map();
+        for (const n of layout.nodes)
+            index.set(n.id, n);
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background:#f5f0e8;">\n`;
         for (const link of layout.links) {
-            const s = layout.nodes.find((n) => n.id === link.source);
-            const t = layout.nodes.find((n) => n.id === link.target);
+            const s = index.get(link.source);
+            const t = index.get(link.target);
             if (!s || !t)
                 continue;
             svg += `  <line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="${link.color}" stroke-width="${link.width}" opacity="0.6"/>\n`;

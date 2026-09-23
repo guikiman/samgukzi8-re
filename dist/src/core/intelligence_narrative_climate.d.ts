@@ -103,8 +103,8 @@ export declare class ClimateManager {
     updateClimate(regionId: string, newWeather: WeatherType, temperature?: number): LocalClimate | null;
     getClimate(regionId: string): LocalClimate | null;
     getAllClimates(): readonly LocalClimate[];
-    /** 날씨 → 수확 보정 매핑 */
-    private static weatherToHarvest;
+    /** 날씨 → 수확 보정 매핑 (월간 보고서 기후 시각화용 public) */
+    static weatherToHarvest(weather: WeatherType): number;
 }
 export interface EnmityRecord {
     readonly targetId: string;

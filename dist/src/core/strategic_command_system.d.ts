@@ -50,6 +50,8 @@ export declare class StrategicCommandManager {
     private static readonly POINTS_REGEN_PER_TURN;
     private static readonly CAMPAIGN_COST;
     private static readonly TRANSPORT_COST;
+    /** 도시 습격 커맨드 비용 [83] */
+    private static readonly RAID_COST;
     private delegationPolicies;
     private activeCampaigns;
     private transportOrders;
@@ -82,6 +84,12 @@ export declare class StrategicCommandManager {
      * 캠페인 취소 — [82] 명령 거부/철회 (포인트 환불 없음)
      */
     cancelCampaign(targetCity: CityID, leaderId: OfficerID): boolean;
+    /**
+     * 도시 습격 명령 — [83] 플레이어 방랑군 재기 커맨드 (전략 포인트 30 소비)
+     * 판정 자체는 vagrant_monthly_actions.resolvePlayerRaid가 수행하며,
+     * 여기서는 전략 포인트 가용 여부만 확인한다.
+     */
+    orderRaid(): boolean;
     /** [83] 방랑군 해산 — 군단 전체 해체 */
     disbandVagrantArmy(): void;
     /** [85] 병종 편제 보정 — 진형에 따른 전투 보정값 조회 */

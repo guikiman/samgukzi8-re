@@ -16,6 +16,10 @@ export interface MapCityView {
     isPlayer: boolean;
     garrison: number;
     isSelected?: boolean;
+    /** [321-340] 지도 날씨 오버레이 — 도시 타일 상단 날씨 아이콘 (미지정 시 미표시) */
+    weather?: string;
+    /** [321-340] 수확 보정 (0.5~1.2). 1.0 미만이면 악천후 색상 표시 */
+    harvestModifier?: number;
 }
 export interface ChinaMapView {
     offsetX: number;
@@ -38,6 +42,10 @@ export declare class ChinaMapRenderer {
     private zoom;
     private hoveredCityId;
     private cities;
+    /** [321-340] 지도 날씨 오버레이 표시 여부 (기본 on) */
+    private showWeatherOverlay;
+    /** [1057][321-340] 계절 톤 — 봄/여름/가을/겨울에 따라 대륙 색조 보정 (null=보정 없음) */
+    private seasonTint;
     /** 영토 셀 (보로노이 근사 그리드) 캐시 */
     private territoryCells;
     private territoryCols;
@@ -98,6 +106,20 @@ export declare class ChinaMapRenderer {
     private drawFactionLabels;
     /** HEX 색을 밝게 섞는 헬퍼 (t: 0~1, 1에 가까울수록 흰색) */
     private lightenColor;
+    /**
+     * [321-340] 지도 날씨 오버레이 — 각 도시 위치에 날씨 아이콘을 그리고,
+     * 수확 보정 0.8 미만 악천후 도시에는 경고 링을 표시한다.
+     */
+    private drawWeatherOverlay;
+    /** 지도 날씨 오버레이 표시 토글 [321-340] (기본 on) */
+    setShowWeatherOverlay(show: boolean): void;
+    /**
+     * [1057][321-340] 계절 톤 설정 — 대륙/바다 색조를 계절에 맞게 보정.
+     * @param season 'spring'|'summer'|'autumn'|'winter' 또는 null(보정 해제)
+     */
+    setSeasonTint(season: 'spring' | 'summer' | 'autumn' | 'winter' | null): void;
+    /** 계절별 대륙 색 보정 — 태평성세/설한/황염의 계절감 표현 */
+    private applySeasonTint;
     private drawCity;
     pan(dx: number, dy: number): void;
     zoomAt(factor: number, centerPx: number, centerPy: number): void;
