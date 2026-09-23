@@ -44,3 +44,23 @@
 - 경제 → `market_engine.ts`, `city_economy_simulator.ts`, `fiscal_scheduler.ts`
 
 레거시 참조로 보존하되, 신규 기능은 `src/core`에 TS로만 구현한다.
+
+## 보존 판정 추가 감사 (2026-09-24)
+
+위 표에 명시되지 않은 나머지 Python 스텁(19~61줄)도 TS 대응물이 이미 구현되어
+포팅 불필요를 확인했다:
+
+- `battle_tactics.py` (39줄) → `battle_stratagem_system.ts`, `stratagem_trap_deployer.ts`,
+  `siege_physics_calculations.ts` (충차/투석기/화약/땅굴 [404] 전부 상위 구현)
+- `faction_manager.py` (19줄) → `game_store.ts` 세력 라이프사이클(removeFaction) +
+  `faction_ai_monthly.ts` 월간 세력 AI
+- `macro_economy.py` (21줄) → `market_engine.ts`, `fiscal_scheduler.ts`
+- `narrative_manager.py` (21줄) → `chronicle_system.ts` (연대기 [441] 사기 기록) +
+  `story_event_compiler.ts` (나비효과 트래킹)
+- `scenario_engine.py` (61줄) → `scenario_system.ts` + `scenario_branch_manager.ts` +
+  `scenario_event_loader.ts` (JSON 로드/상태/랜덤 인카운터 [443][451][455])
+- `social_manager.py` (27줄) → `sworn_brother_network.ts` (의형제 그룹화 [161]) +
+  `officer_psychology_engine.ts` (성격 스트레스 [168])
+- `meta_data_manager.py` (21줄) → `meta_systems.ts`
+
+→ **결론: src/systems의 Python 전체 스텁 대응 완료. 포팅 작업 종료.**
