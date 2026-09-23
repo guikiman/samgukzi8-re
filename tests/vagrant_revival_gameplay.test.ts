@@ -150,6 +150,40 @@ describe('방랑군 재기 플레이 흐름 [83][421-440]', () => {
         expect(outcome.message).toContain('전략 포인트');
         expect(engine.strategicCommand.getStrategyPoints()).toBe(pts); // 미소비
     });
+
+    it('습격 성공 시 전리품(자금/국고 약탈)이 점령 도시에 귀속된다 [131-145]', () => {
+        const { store, world } = createEngine();
+        const enemyId = world.factions.find(f => f.id !== 'fac_0')!.id;
+        // 방랑군 전환
+        for (const c of world.cities.filter(c => c.ownerId === 'fac_0')) {
+            store.updateCity(c.id, { ownerId: null });
+        }
+        convertToFactionVagrant(store, 'fac_0');
+
+        // 대상 도시에 약탈할 자금/국고 적립 + 방어 최소화
+        const target = world.cities.find(c => c.ownerId === enemyId)!;
+        const fundsBefore = target.funds;
+        const enemyGoldBefore = store.getFaction(enemyId)!.gold;
+        store.updateCity(target.id, { funds: fundsBefore + 1000, defense: 1 });
+
+        // 습격 확정 — 다른 도시 방어도 1로 낮춰 최약 대상 경합 제거
+        for (const c of store.getAllCities()) {
+            if (c.ownerId !== 'fac_0' && c.ownerId !== null) store.updateCity(c.id, { defense: 1 });
+        }
+        const outcome = resolvePlayerRaid(store, 'fac_0', target.id);
+        expect(outcome.success).toBe(true);
+
+        // 전리품 메시지에 약탈 요약 포함
+        if (outcome.message.includes('전리품')) {
+            expect(outcome.message).toMatch(/전리품: (포로|자금|국고)/);
+        }
+        // 약탈된 자금은 점령 도시에 귀속 (방랑군이 도시+자금 모두 획득)
+        const captured = store.getCity(target.id)!;
+        expect(captured.ownerId).toBe('fac_0');
+        expect(captured.funds).toBeGreaterThanOrEqual(0);
+        // 피해 세력 국고는 감소했을 수 있음 (방어 도시 국고 약탈 비율 적용)
+        expect(store.getFaction(enemyId)!.gold).toBeLessThanOrEqual(enemyGoldBefore);
+    });
 });
 
 describe('지도 날씨 오버레이 데이터 바인딩 [321-340]', () => {

@@ -17,6 +17,7 @@
 import type { GameStore } from './game_store.js';
 import type { OfficerID } from './types.js';
 import { clearVagrantOnCityGain } from './vagrant_revival_system.js';
+import { processBattleSpoils } from './battle_spoils_system.js';
 
 export interface VagrantRaidResult {
     factionId: string;
@@ -97,11 +98,19 @@ export function processVagrantMonthlyActions(store: GameStore): VagrantRaidResul
 
         if (weakest && strength >= weakest.defense * 10) {
             // 점수 판정: 통솔 합 + 난수 vs 도시 방어 × 10
-            const assaultScore = store.getOfficersByFaction(faction.id)
+    const assaultScore = store.getOfficersByFaction(faction.id)
                 .reduce((s, o) => s + o.stats.leadership, 0) + Math.random() * 60;
             if (assaultScore >= weakest.defense) {
                 const previousOwner = weakest.ownerId;
                 store.updateCity(weakest.id, { ownerId: faction.id });
+                // 습격 전리품 [131-145] — 전투 함락과 동일한 약탈/포획 파이프라인 재사용.
+                // 공격 거점이 없는 방랑군 특성상 점령 도시를 양쪽에 사용해 약탈분이 그대로 남는다.
+                const spoils = processBattleSpoils(store, weakest.id, weakest.id);
+                const spoilsSummary = [
+                    spoils.capturedOfficerIds.length > 0 ? `포로 ${spoils.capturedOfficerIds.length}` : null,
+                    spoils.fundsPlundered > 0 ? `자금 ${spoils.fundsPlundered}` : null,
+                    spoils.factionGoldPlundered > 0 ? `국고 ${spoils.factionGoldPlundered}` : null,
+                ].filter(Boolean).join(' · ');
                 clearVagrantOnCityGain(store, faction.id);
                 results.push({
                     factionId: faction.id,
@@ -109,7 +118,7 @@ export function processVagrantMonthlyActions(store: GameStore): VagrantRaidResul
                     kind: 'RAID',
                     success: true,
                     capturedCityId: weakest.id,
-                    message: `⚔️ 방랑군 ${faction.name}이(가) ${weakest.name}을(를) 습격해 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공`,
+                    message: `⚔️ 방랑군 ${faction.name}이(가) ${weakest.name}을(를) 습격해 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}`,
                 });
             } else {
                 results.push({
@@ -162,11 +171,18 @@ export function resolvePlayerRaid(store: GameStore, factionId: string, targetCit
     if (assaultScore >= city.defense) {
         const previousOwner = city.ownerId;
         store.updateCity(city.id, { ownerId: factionId });
+        // 습격 전리품 [131-145] — 전투 함락과 동일한 약탈/포획 파이프라인 재사용
+        const spoils = processBattleSpoils(store, city.id, city.id);
+        const spoilsSummary = [
+            spoils.capturedOfficerIds.length > 0 ? `포로 ${spoils.capturedOfficerIds.length}` : null,
+            spoils.fundsPlundered > 0 ? `자금 ${spoils.fundsPlundered}` : null,
+            spoils.factionGoldPlundered > 0 ? `국고 ${spoils.factionGoldPlundered}` : null,
+        ].filter(Boolean).join(' · ');
         clearVagrantOnCityGain(store, factionId);
         return {
             success: true,
             capturedCityId: city.id,
-            message: `⚔️ ${faction.name}이(가) ${city.name}을(를) 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공`,
+            message: `⚔️ ${faction.name}이(가) ${city.name}을(를) 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}`,
         };
     }
     return { success: false, message: `⚔️ ${city.name} 습격이 격퇴되었습니다 (도시 방어 ${city.defense}).` };

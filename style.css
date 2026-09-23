@@ -130,15 +130,24 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
     transition: border-color .25s, background .25s;
 }
 .panel:hover { border-color: var(--gold-dim); background: var(--bg-panel-hover); }
+/* [1057][321-340] 계절 테마 — 패널 테두리/제목에 계절 강조색 브렌드 */
+.panel {
+    border-color: color-mix(in srgb, var(--gold-faint) 70%, var(--season-accent, var(--gold)) 30%);
+}
 .panel h3 {
     font-family: var(--font-serif);
     font-size: 12px;
     font-weight: 600;
-    color: var(--gold);
+    color: color-mix(in srgb, var(--gold) 55%, var(--season-accent, var(--gold)) 45%);
     letter-spacing: 3px;
     margin-bottom: 8px;
-    border-bottom: 1px solid var(--gold-faint);
+    border-bottom: 1px solid color-mix(in srgb, var(--gold-faint) 65%, var(--season-accent, var(--gold)) 35%);
     padding-bottom: 6px;
+}
+/* 월간 보고서·도시 상세 패널 헤더 — 계절 글로우 은은히 적용 */
+#monthly-report-panel .cdp-header,
+#city-detail-panel .cdp-header {
+    background: linear-gradient(180deg, var(--season-glow, transparent), transparent);
 }
 #officer-detail, #faction-detail { font-size: 12px; color: var(--text-muted); min-height: 60px; line-height: 1.6; }
 #log-panel { flex: 1; display: flex; flex-direction: column; }
