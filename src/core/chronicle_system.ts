@@ -20,6 +20,7 @@ export type ChronicleKind =
     | 'DEFECTION'    // 배신
     | 'CAPTURE'      // 포획/포로
     | 'DESTROYED'    // 세력 멸망
+    | 'HISTORICAL'   // 연의전/역사 이벤트 [300][106-114]
     | 'ENDING';      // 천하 통일 등 엔딩
 
 /** 연대기 항목 */
@@ -49,6 +50,7 @@ const KIND_ICONS: Record<ChronicleKind, string> = {
     DEFECTION: '🐍',
     CAPTURE: '⛓️',
     DESTROYED: '💀',
+    HISTORICAL: '📜',
     ENDING: '🏆',
 };
 

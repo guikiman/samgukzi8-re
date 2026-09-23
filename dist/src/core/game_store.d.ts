@@ -7,12 +7,15 @@
  * Redux 스타일 구독 + 디스패치
  */
 import { IGameStore, NormalizedState, GlobalState, Officer, Faction, City, Army, RelationshipEdge, OfficerID, FactionID, CityID, ArmyID, ICommand, GamePhase } from './types.js';
+import { TriStateGraphDatabase } from './relationship_graph_db.js';
 type StoreListener = (state: NormalizedState, globalState: GlobalState) => void;
 declare class GameStore implements IGameStore {
     private state;
     private globalState;
     private listeners;
     private static instance;
+    /** 파생 관계망 그래프 인덱스 — O(1) 이웃/적대 조회 (relationship_graph_db.ts) */
+    private readonly graphIndex;
     private constructor();
     static getInstance(): GameStore;
     getState(): NormalizedState;
@@ -31,6 +34,15 @@ declare class GameStore implements IGameStore {
     /** 세력 제거 — 멸망 처리용. 소속 도시 무주화 + 무장/인덱스 정리 [213] */
     removeFaction(id: FactionID): void;
     addRelationship(edge: RelationshipEdge): void;
+    /** RelationshipEdge → 그래프 인덱스 에지 동기화 */
+    private syncGraphIndex;
+    /**
+     * 파생 관계망 그래프 인덱스 접근자 — 성능 민감 경로(관계망 뷰어, AI 등용 판정)용.
+     * 세이브 복원 등 대량 변경 후에는 rebuildGraphIndex() 호출 필요.
+     */
+    getGraphIndex(): TriStateGraphDatabase;
+    /** 전체 관계를 그래프 인덱스에 재구축 — 월드 초기화/세이브 복원 후 호출 */
+    rebuildGraphIndex(): void;
     setGlobalState(updates: Partial<GlobalState>): void;
     advanceTime(): void;
     setPhase(phase: GamePhase): void;

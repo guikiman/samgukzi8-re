@@ -19,6 +19,7 @@ const KIND_ICONS = {
     DEFECTION: '🐍',
     CAPTURE: '⛓️',
     DESTROYED: '💀',
+    HISTORICAL: '📜',
     ENDING: '🏆',
 };
 /**

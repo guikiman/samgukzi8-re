@@ -1,0 +1,189 @@
+{
+    "comment": "시나리오별 연의전 이벤트 체인 정의 [300][106-114]. EventEngine 큐에 적재되어 월간 스캔으로 조건 충족 시 발동된다.",
+    "chains": [
+        {
+            "scenarioId": "01",
+            "chainId": "chain_01_yellow_turban",
+            "chainName": "황건적의 난 — 봉기의 불씨",
+            "nodes": [
+                {
+                    "eventId": "ev_01_turbans_rise",
+                    "eventName": "황건적 봉기",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 184, "maxValue": 200 }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "장각: 창천이 죽은 뒤에 황천이 당립떠 세상을 다스리리라.",
+                            "황건적의 기치 아래 수십만의 난민이 봉기했다!"
+                        ],
+                        "rewards": { "moraleAll": -5, "chaosFlag": "yellow_turban_rising" }
+                    }
+                },
+                {
+                    "eventId": "ev_01_royal_decrees",
+                    "eventName": "조정의 격문",
+                    "priority": 5,
+                    "conditions": [
+                        { "type": "year", "minValue": 184 }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "조정은 각지에 격문을 내려 의병 모집을 명했다.",
+                            "각지의 영웅들이 자신의 기치를 올리기 시작한다."
+                        ],
+                        "rewards": { "fundsAll": 300 }
+                    }
+                }
+            ]
+        },
+        {
+            "scenarioId": "02",
+            "chainId": "chain_02_coalition",
+            "chainName": "반동탁 연합 — 격문과 회맹",
+            "nodes": [
+                {
+                    "eventId": "ev_02_cao_cao_letter",
+                    "eventName": "조조의 격문",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 190, "maxValue": 195 },
+                        { "type": "faction", "targetFaction": "dong_zhuo" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "조조: 동탁을 토벌할 연합군의 깃발 아래 모여라!",
+                            "조조의 격문에 각지 제후들이 응답했다."
+                        ],
+                        "rewards": { "diplomacyFlag": "coalition_formed" }
+                    }
+                },
+                {
+                    "eventId": "ev_02_hulao_gate",
+                    "eventName": "호뢰관의 대치",
+                    "priority": 8,
+                    "conditions": [
+                        { "type": "year", "minValue": 190 },
+                        { "type": "warlord_alive", "targetId": "lv_bu" }
+                    ],
+                    "result": {
+                        "eventType": "BATTLE_SCENE",
+                        "dialogueLines": [
+                            "여포: 나는 날개 달린 악마, 사람들이 나를 비로소 두렵여하리라!",
+                            "호뢰관 앞 삼형제의 합세로 여포가 물러났다."
+                        ],
+                        "rewards": { "reputationLiuBei": 10 }
+                    }
+                },
+                {
+                    "eventId": "ev_02_jade_seal",
+                    "eventName": "전국새의 발견",
+                    "priority": 7,
+                    "conditions": [
+                        { "type": "year", "minValue": 191 },
+                        { "type": "warlord_alive", "targetId": "sun_jian" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "손견: 이것은... 전국샤가 아니냐. 하늘이 나에게 천하를 맡기신 것인가.",
+                            "손견이 낙양 폐허에서 전국새를 발견했다."
+                        ],
+                        "rewards": { "ambitionSunJian": 20 }
+                    }
+                }
+            ]
+        },
+        {
+            "scenarioId": "03",
+            "chainId": "chain_03_warlords",
+            "chainName": "군웅할거 — 연주의 위기",
+            "nodes": [
+                {
+                    "eventId": "ev_03_lu_bu_strikes",
+                    "eventName": "여포의 연주 습격",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 194, "maxValue": 198 },
+                        { "type": "warlord_alive", "targetId": "lv_bu" },
+                        { "type": "warlord_alive", "targetId": "cao_cao" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "진궁: 장군, 지금이 조조의 본거지를 노릴 절호의 기회입니다!",
+                            "여포가 진류를 비워 연주를 습격했다."
+                        ],
+                        "rewards": { "chaosFlag": "yanzhou_crisis" }
+                    }
+                },
+                {
+                    "eventId": "ev_03_taoyuan_three",
+                    "eventName": "도원결의의 재회",
+                    "priority": 6,
+                    "conditions": [
+                        { "type": "year", "minValue": 194 },
+                        { "type": "warlord_alive", "targetId": "liu_bei" },
+                        { "type": "warlord_alive", "targetId": "guan_yu" },
+                        { "type": "warlord_alive", "targetId": "zhang_fei" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "유비: 우리 형제의 의는 하늘과 땅이 함께 알리니라.",
+                            "삼형제가 다시 한번 서약을 굳혔다."
+                        ],
+                        "rewards": { "moraleLiuBeiFaction": 10 }
+                    }
+                }
+            ]
+        },
+        {
+            "scenarioId": "05",
+            "chainId": "chain_05_three_kingdoms",
+            "chainName": "삼국정립 — 천하 삼분",
+            "nodes": [
+                {
+                    "eventId": "ev_05_longzhong_plan",
+                    "eventName": "융중 대책",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 207 },
+                        { "type": "warlord_alive", "targetId": "liu_bei" },
+                        { "type": "warlord_alive", "targetId": "zhuge_liang" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "제갈량: 천하가 이미 삼분되어 장군이 익주를 차지하면 대업을 이룰 수 있습니다.",
+                            "유비가 융중에서 제갈량의 천하 삼분계를 들었다."
+                        ],
+                        "rewards": { "strategicFlag": "longzhong_plan_heard" }
+                    }
+                },
+                {
+                    "eventId": "ev_05_red_cliff_wind",
+                    "eventName": "적벽의 동풍",
+                    "priority": 9,
+                    "conditions": [
+                        { "type": "year", "minValue": 208 },
+                        { "type": "warlord_alive", "targetId": "zhuge_liang" },
+                        { "type": "warlord_alive", "targetId": "zhou_yu" }
+                    ],
+                    "result": {
+                        "eventType": "BATTLE_SCENE",
+                        "dialogueLines": [
+                            "제갈량: 동풍을 빌려 드리지요.",
+                            "동풍이 일어나 화공이 조조의 연합 함대를 집어삼켰다!"
+                        ],
+                        "rewards": { "fireAttackReady": true }
+                    }
+                }
+            ]
+        }
+    ]
+}

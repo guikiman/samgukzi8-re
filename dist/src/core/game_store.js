@@ -7,8 +7,12 @@
  * Redux 스타일 구독 + 디스패치
  */
 import { GamePhase, monthToSeason, } from './types.js';
+// 고성능 관계망 그래프 DB — 파생 O(1) 인덱스 (graph_db.py TS 포팅)
+import { TriStateGraphDatabase } from './relationship_graph_db.js';
 class GameStore {
     constructor() {
+        /** 파생 관계망 그래프 인덱스 — O(1) 이웃/적대 조회 (relationship_graph_db.ts) */
+        this.graphIndex = new TriStateGraphDatabase();
         this.state = {
             officers: {},
             factions: {},
@@ -141,12 +145,18 @@ class GameStore {
     }
     removeOfficer(id) {
         const officer = this.state.officers[id];
-        if (!officer)
+        if (!officer) {
+            // 무장 엔티티가 없어도 관계 에지 참여자로서 그래프 인덱스에 남아 있을 수 있으므로 정리 시도
+            if (this.graphIndex.removeWarlord(id))
+                this.notify();
             return;
+        }
         removeFromIndex(this.state.byFaction.officers, officer.factionId, id);
         removeFromIndex(this.state.byCity.officers, officer.cityId, id);
         delete this.state.officers[id];
         delete this.state.byOfficer.relationships[id];
+        // 파생 그래프 인덱스에서도 노드 제거 — 양방향 에지 정리 포함
+        this.graphIndex.removeWarlord(id);
         this.notify();
     }
     /** 세력 제거 — 멸망 처리용. 소속 도시 무주화 + 무장/인덱스 정리 [213] */
@@ -180,7 +190,32 @@ class GameStore {
             ...edge, source: edge.target, target: edge.source,
         };
         this.state.byOfficer.relationships[edge.target].push(reverseEdge);
+        // 파생 그래프 인덱스 동기화 — O(1) 우호도/이웃 조회 유지
+        this.syncGraphIndex(edge);
         this.notify();
+    }
+    /** RelationshipEdge → 그래프 인덱스 에지 동기화 */
+    syncGraphIndex(edge) {
+        const type = edge.type === 'NEMESIS' ? 'enemy'
+            : edge.type === 'SWORN_BROTHER' ? 'sworn_brother'
+                : edge.type === 'RIVAL' ? 'enemy' : 'friend';
+        // affinity(-100~100)를 0~100 우호도로 정규화
+        const weight = Math.max(0, Math.min(100, edge.affinity + 50));
+        this.graphIndex.setRelationship(edge.source, edge.target, weight, type);
+    }
+    /**
+     * 파생 관계망 그래프 인덱스 접근자 — 성능 민감 경로(관계망 뷰어, AI 등용 판정)용.
+     * 세이브 복원 등 대량 변경 후에는 rebuildGraphIndex() 호출 필요.
+     */
+    getGraphIndex() {
+        return this.graphIndex;
+    }
+    /** 전체 관계를 그래프 인덱스에 재구축 — 월드 초기화/세이브 복원 후 호출 */
+    rebuildGraphIndex() {
+        this.graphIndex.clear();
+        for (const edge of Object.values(this.state.relationships)) {
+            this.syncGraphIndex(edge);
+        }
     }
     // ============================================================
     // 전역 상태 업데이트

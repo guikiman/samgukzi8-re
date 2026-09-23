@@ -522,13 +522,33 @@ export class ChinaMapRenderer {
      * 글자 크기는 영토 셀 수(면적)에 비례. 도시 뒤, 지형 앞에 얹힌다.
      */
     private drawFactionLabels(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-        for (const label of this.factionLabels) {
+        // [461-480] 안티오버랩: 플레이어 라벨 최우선 → 면적 내림차순으로 배치 검사,
+        // 겹치는 라벨은 생략. 실측 measureText AABB 기반 판정.
+        interface Placed { x: number; y: number; w: number; h: number; }
+        const placed: Placed[] = [];
+        const ordered = [...this.factionLabels].sort((a, b) =>
+            (b.isPlayer ? 1 : 0) - (a.isPlayer ? 1 : 0) || b.cells - a.cells,
+        );
+        for (const label of ordered) {
             const { px, py } = this.normToPixel(label.cx, label.cy, width, height);
             if (px < -80 || px > width + 80 || py < -60 || py > height + 60) continue;
 
             // 영토 면적 기반 글자 크기 (최소 18px, 최대 64px)
             const fontSize = Math.max(18, Math.min(64, Math.sqrt(label.cells / 4096) * 448 * this.zoom));
             if (!label.name) continue;
+
+            // 실측 텍스트 AABB — 패딩 포함 겹침 판정
+            ctx.save();
+            ctx.font = `bold ${fontSize}px "Malgun Gothic", sans-serif`;
+            const tw = ctx.measureText(label.name).width;
+            ctx.restore();
+            const box: Placed = { x: px - tw / 2 - 6, y: py - fontSize / 2 - 4, w: tw + 12, h: fontSize + 8 };
+            const overlaps = placed.some((p) =>
+                box.x < p.x + p.w && box.x + box.w > p.x &&
+                box.y < p.y + p.h && box.y + box.h > p.y,
+            );
+            if (overlaps) continue; // 우선순위 높은 라벨에 양보
+            placed.push(box);
 
             ctx.save();
             ctx.font = `bold ${fontSize}px "Malgun Gothic", sans-serif`;

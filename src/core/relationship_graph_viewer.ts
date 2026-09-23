@@ -210,6 +210,8 @@ export class RelationshipGraphViewer {
 
   /** 클릭 콜백 — 노드 히트 시 노드 id, 배경 클릭 시 null */
   private onNodeClick: ((nodeId: string | null) => void) | null = null;
+  /** 더블클릭 콜백 [461-480] — 노드 히트 시 호출 (배경 더블클릭은 무시) */
+  private onNodeDoubleClick: ((nodeId: string) => void) | null = null;
   private dragging = false;
   private dragMoved = false;
   private lastMouse: { x: number; y: number } | null = null;
@@ -223,8 +225,10 @@ export class RelationshipGraphViewer {
     canvas: HTMLCanvasElement,
     getGraph: () => GraphLayout | null,
     onNodeClick?: (nodeId: string | null) => void,
+    onNodeDoubleClick?: (nodeId: string) => void,
   ): () => void {
     this.onNodeClick = onNodeClick ?? null;
+    this.onNodeDoubleClick = onNodeDoubleClick ?? null;
 
     const toCanvas = (e: MouseEvent): { x: number; y: number } => {
       const rect = canvas.getBoundingClientRect();
@@ -301,11 +305,20 @@ export class RelationshipGraphViewer {
       this.lastMouse = null;
     };
 
+    // [461-480] 더블클릭 — 노드 상세 열기용 (히트한 노드가 있을 때만 콜백)
+    const onDblClick = (e: MouseEvent) => {
+      if (!this.onNodeDoubleClick) return;
+      const m = toCanvas(e);
+      const nodeId = hitTest(m.x, m.y);
+      if (nodeId) this.onNodeDoubleClick(nodeId);
+    };
+
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseup', onUp);
     canvas.addEventListener('mouseleave', onLeave);
+    canvas.addEventListener('dblclick', onDblClick);
 
     return () => {
       canvas.removeEventListener('wheel', onWheel);
@@ -313,7 +326,9 @@ export class RelationshipGraphViewer {
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mouseup', onUp);
       canvas.removeEventListener('mouseleave', onLeave);
+      canvas.removeEventListener('dblclick', onDblClick);
       this.onNodeClick = null;
+      this.onNodeDoubleClick = null;
       this.currentGraph = null;
     };
   }

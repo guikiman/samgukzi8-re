@@ -29,5 +29,15 @@ export declare class HistoricalEventSystem {
     isFlagSet(flag: string): boolean;
     getTriggeredEvents(): HistoricalEvent[];
     getPendingEvents(currentYear: number, currentMonth: number): HistoricalEvent[];
+    /** 세이브용 스냅샷 — 발동 이력/전역 플래그 보존 (재발동 방지) */
+    serialize(): {
+        triggeredIds: string[];
+        flags: Array<[string, boolean]>;
+    };
+    /** 세이브 복원 — 발동 이력/플래그 재구성 (이벤트 정의는 코드 유지) */
+    restore(data: {
+        triggeredIds: string[];
+        flags?: Array<[string, boolean]>;
+    }): void;
 }
 //# sourceMappingURL=historical_event_system.d.ts.map

@@ -9,7 +9,7 @@
  */
 import type { GameStore } from './game_store.js';
 /** 연대기 항목 종류 */
-export type ChronicleKind = 'VENGEANCE' | 'VISIT' | 'FREE_VISIT' | 'PACT' | 'RESCUE' | 'DEFECTION' | 'CAPTURE' | 'DESTROYED' | 'ENDING';
+export type ChronicleKind = 'VENGEANCE' | 'VISIT' | 'FREE_VISIT' | 'PACT' | 'RESCUE' | 'DEFECTION' | 'CAPTURE' | 'DESTROYED' | 'HISTORICAL' | 'ENDING';
 /** 연대기 항목 */
 export interface ChronicleEntry {
     kind: ChronicleKind;

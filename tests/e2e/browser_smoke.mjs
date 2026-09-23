@@ -133,12 +133,16 @@ class CDP {
 
     _send(opcode, payload) {
         const mask = Buffer.from([1, 2, 3, 4]);
-        const n = payload.length;
+        // [결함 수정] UTF-8 멀티바이트(한국어 표현식) 프레임 길이를 바이트 기준으로 계산.
+        // 기존에는 문자 수(payload.length)를 길이로 선언해 한국어 포함 요청이 잘려
+        // 브라우저가 응답하지 않는 'CDP timeout: Runtime.evaluate'가 발생했다.
+        const buf = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
+        const n = buf.length;
         let header;
         if (n < 126) header = Buffer.from([0x80 | opcode, 0x80 | n]);
         else if (n < 65536) { header = Buffer.alloc(4); header[0] = 0x80 | opcode; header[1] = 0x80 | 126; header.writeUInt16BE(n, 2); }
         else { header = Buffer.alloc(10); header[0] = 0x80 | opcode; header[1] = 0x80 | 127; header.writeBigUInt64BE(BigInt(n), 2); }
-        const masked = Buffer.from(payload, 'utf8').map((b, i) => b ^ mask[i % 4]);
+        const masked = buf.map((b, i) => b ^ mask[i % 4]);
         this.sock.write(Buffer.concat([header, mask, masked]));
     }
 
@@ -247,6 +251,37 @@ async function main() {
         }
 
         // 통일 조건 강제 → 엔딩 판정
+        // ===== [461-480] 신규 UI 검증 =====
+        // (a) 인맥 패널 오픈 + 그래프 렌더 + 닫기
+        const graphProbe = await cdp.evalJson(
+            "(function(){var b=document.getElementById('btn-graph');b.click();" +
+            "var panel=document.getElementById('graph-panel');var canvas=document.getElementById('gp-canvas');" +
+            "var detail=document.getElementById('gp-detail').textContent;" +
+            "var out={open:panel.style.display,cw:canvas.width,rows:detail.split('gp-rel-row').length-1," +
+            "hint:detail.indexOf('노드')>=0};" +
+            "b.click();out.closed=panel.style.display==='none';return out;})()");
+
+        // (b) 접근성 패널 — 색약 모드 버튼 클릭 시 active 전환
+        const a11yProbe = await cdp.evalJson(
+            "(function(){var b=document.getElementById('btn-settings');b.click();" +
+            "var cbBtn=document.querySelector('#a11y-content [data-cb=\"deuteranopia\"]');" +
+            "if(!cbBtn) return {err:'no cb button'};" +
+            "cbBtn.click();" +
+            "var out={open:document.getElementById('a11y-panel').style.display};" +
+            "out.cbActive=!!document.querySelector('#a11y-content [data-cb=\"deuteranopia\"].active');" +
+            "document.getElementById('a11y-close').click();return out;})()");
+
+        // (c) 세이브 스냅샷 — 슬롯 저장 시 meta.uiSettings 동반 여부
+        const saveLoadProbe = await cdp.evalJson(
+            "(function(){var out={};" +
+            "document.getElementById('btn-slots').click();" +
+            "var slot=document.querySelector('.ss-slot[data-slot=\"1\"]');" +
+            "if(!slot) return {err:'no slot'};slot.click();" +
+            "out.saved=!!localStorage.getItem('sik_re_slot_1');" +
+            "var meta=JSON.parse(localStorage.getItem('sik_re_slot_1')||'{}');" +
+            "out.uiInSave=!!(meta.meta&&meta.meta.uiSettings);" +
+            "document.getElementById('ss-close').click();return out;})()");
+
         const forced = await cdp.evalJson(
             "(function(){var s=window.__game.getStore();var gs=s.getGlobalState();" +
             "var facs=s.getState().factions;var target=(facs[gs.playerFactionId]!==undefined)?gs.playerFactionId:Object.keys(facs)[0];" +
@@ -283,7 +318,7 @@ async function main() {
             }
         }
 
-        const result = { progress, forced, ending, consoleErrors: consoleErrors.slice(0, 10), notFound: notFound.slice(0, 5), pageErrors: pageErrors.slice(0, 10) };
+        const result = { progress, graphProbe, a11yProbe, saveLoadProbe, forced, ending, consoleErrors: consoleErrors.slice(0, 10), notFound: notFound.slice(0, 5), pageErrors: pageErrors.slice(0, 10) };
         console.log(JSON.stringify(result, null, 2));
 
         const resource404 = consoleErrors.filter((e) => e.includes('Failed to load resource'));
@@ -295,7 +330,15 @@ async function main() {
             && onlyFavicon404
             && progress.length === 4
             && ending.display === 'flex'
-            && ending.narratives >= 1;
+            && ending.narratives >= 1
+            // [461-480] 신규 UI 검증
+            && graphProbe.open === 'block'
+            && graphProbe.closed === true
+            && (graphProbe.rows > 0 || graphProbe.hint === true)
+            && a11yProbe.open === 'block'
+            && a11yProbe.cbActive === true
+            && saveLoadProbe.saved === true
+            && saveLoadProbe.uiInSave === true;
         console.log('E2E_RESULT:', ok ? 'PASS' : 'FAIL');
         exitCode = ok ? 0 : 1;
         cdp.sock.destroy();

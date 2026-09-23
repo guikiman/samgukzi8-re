@@ -1979,6 +1979,10 @@ function renderGraphPanel() {
                 document.getElementById('gp-center').value = nodeId;
                 renderGraphPanel();
             }
+        }, (nodeId) => {
+            // [461-480] 더블클릭 — 사이드바 무장 상세 패널에 해당 무장 표시
+            renderOfficerDetail(nodeId);
+            addLog(`인맥 뷰: ${engine['store'].getOfficer(nodeId)?.name ?? nodeId} 상세 표시`);
         });
     }
     renderGraphDetail();

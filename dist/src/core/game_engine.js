@@ -30,11 +30,47 @@ import { LifeSimulator } from './life_simulator.js';
 import { MetaManager, LegacyManager, MetaDataManager } from './meta_systems.js';
 import { IntelligenceManager, NarrativeManager, ClimateManager } from './intelligence_narrative_climate.js';
 import { processVagrantMonthlyActions, resolvePlayerRaid } from './vagrant_monthly_actions.js';
+// Python event_engine.py TS 포팅 [300] — 연의전 이벤트 체인 큐 + 조건 평가기
+import { EventEngine, EventChainQueueManager, WarlordConditionEvaluator } from './event_chain_engine.js';
+import { HistoricalEventSystem } from './historical_event_system.js';
+import { ScenarioBranchManager } from './scenario_branch_manager.js';
+// 시나리오 연의전 데이터 로더 [300][301] — JSON 체인 정의 적재 + Schema 검증
+import { BUILTIN_SCENARIO_EVENTS, loadScenarioEventChains } from './scenario_event_loader.js';
+// 도시 안정 시스템 [148] — 민란 위험도/아사 판정 (Python city_manager.py 포팅)
+import { checkRiot, decayRiotRisk, processStarvation, } from './city_security_system.js';
+// AI 스트리밍 엔진 [201][121-130] — Worker 기반 1,000명 가중치 AI (AGENTS.md §7)
+import { AIStreamManager } from '../ai/ai_stream_manager.js';
 export class GameEngine {
+    /**
+     * 민란 억제 롤 강제 지정 [148] — 0이면 억제 롤 성공(진압), 1이면 실패(민란 발생).
+     * 테스트/리플레이 재현용이며, 지정 시 다음 판정 1회에만 적용 후 해제된다.
+     */
+    setRiotRollOverride(value) {
+        this._riotRollOverride = value;
+    }
+    riotRollOverride() {
+        const v = this._riotRollOverride;
+        this._riotRollOverride = null; // 1회 소비 후 해제
+        return v;
+    }
     constructor(store) {
         this.worker = null;
         this.bootstrap = null;
+        /** 시나리오 분기 관리자 [106-114] — 외부(시나리오 로더)에서 분기 등록용 */
+        this.scenarioBranches = new ScenarioBranchManager();
+        /** 도시 안정 상태 [148] — 도시 ID별 민란 위험도 (Python riot_risk) */
+        this.citySecurityStates = new Map();
+        /** 이번 달 발생한 민란/아사 기록 [148] — 월간 보고서 동향용 */
+        this.securityMonthlyLog = { riots: [], starvations: [] };
         this.isProcessingTurn = false;
+        /** AI 스트리밍 매니저 [201] — Worker 기반 세력별 스트리밍 AI (실패 시 메인 스레드 폴백) */
+        this.aiStream = null;
+        /** 스트리밍 AI 영구 실패 플래그 — 워커 오류 이후 폴백 고정 */
+        this.streamFailed = false;
+        /** 스트리밍 AI의 월간 결정 수집 버퍼 — executeTurn에서 소비 */
+        this.streamBatchCount = 0;
+        /** 민란 억제 롤 오버라이드 [148] — 테스트 결정론용. 값 지정 시 1회 소비 후 자동 해제 */
+        this._riotRollOverride = null;
         /**
          * 이번 달 포팅 시스템 동향 수집 버퍼 [76-85][321-340][341-360][421-438]
          * processPortedSystemsMonthly가 채우고, 월간 보고서(MonthlyReportSystem)가 peek한다.
@@ -67,6 +103,11 @@ export class GameEngine {
         this.intelligenceManager = new IntelligenceManager();
         this.narrativeManager = new NarrativeManager();
         this.climateManager = new ClimateManager();
+        // 연의전 이벤트 체인 엔진 [300] + 역사 이벤트 등록 [106-114]
+        this.eventEngine = new EventEngine(new EventChainQueueManager(), new WarlordConditionEvaluator());
+        this.historicalEvents = new HistoricalEventSystem();
+        this.historicalEvents.registerDefaultEvents();
+        // 시나리오별 연의전 체인 적재는 initWorld에서 시나리오 ID로 수행 [300]
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -232,7 +273,9 @@ export class GameEngine {
             await this.delay(10);
             this.transition('COUNCIL_END');
             await this.delay(10);
-            const decisions = await this.lifecycleManager.executeAITurn(onProgress);
+            // AI 턴 — Worker 스트리밍 엔진 [201] 우선, 실패/미지원 시 기존
+            // Time-Slicing 스케줄러 폴백. 두 경로 모두 동일한 커맨드 변환 파이프라인 사용.
+            const decisions = await this.executeAITurnWithStreaming(onProgress);
             console.log(`[Engine] AI decisions: ${decisions.length}`);
             for (const decision of decisions) {
                 this.convertDecisionToCommand(decision);
@@ -244,6 +287,9 @@ export class GameEngine {
             if (this.bootstrap) {
                 this.bootstrap.processTurnStart();
             }
+            // 월간 보고서 로그 리셋 — 새 달 동향만 담도록 [148]
+            this.securityMonthlyLog.riots = [];
+            this.securityMonthlyLog.starvations = [];
             // 세력 AI 월간 자율 행동 (내정/징병/출진) [201]
             const aiReports = this.factionAI.runMonthly();
             for (const r of aiReports) {
@@ -258,7 +304,14 @@ export class GameEngine {
                     });
                 }
             }
+            // 도시 안정 월간 판정 [148] — 아사/민란 위험도/민란 발생
+            // 주의: 월 수입 유입(processMonthlyMaintenance) *전*에 판정한다.
+            // Python city_manager.py 규격: 소비 반영 후 재고 0 이하 → 아사.
+            // 수입을 먼저 반영하면 군량 고갈 세력이 수입 한 번에 회복되어 아사가 영원히 발생하지 않는다.
+            this.processCitySecurityMonthly();
             this.processMonthlyMaintenance();
+            // 연의전 이벤트 체인 스캔/발동 [300][106-114]
+            this.processEventChainMonthly();
             // 포팅 시스템 월간 훅 [76-85][321-340][341-360][421-438] — 전략 명령 진행, 첩보망 유지비,
             // 지역 기후 전이, 계절 기반 수확 보정, 고령 무장 은퇴
             this.processPortedSystemsMonthly();
@@ -465,6 +518,57 @@ export class GameEngine {
             });
         }
     }
+    // ============================================================
+    // AI 스트리밍 턴 [201][121-130] — Worker 우선 + 메인 스레드 폴백
+    // ============================================================
+    /**
+     * Worker 스트리밍 AI 엔진으로 월간 AI 턴을 실행한다 (AGENTS.md §7).
+     *
+     * - Worker 가능 환경: AIStreamManager가 1,000명 무장을 세력 단위로 분할 연산하고,
+     *   각 배치가 도착하는 대로 즉시 커맨드로 변환한다 (스트리밍 반영).
+     * - Worker 불가/오류 (Node 테스트, 구형 브라우저): 기존 TurnScheduler 폴백.
+     *
+     * @returns 소비된 총 결정 수 (스트리밍 + 폴백 합산)
+     */
+    async executeAITurnWithStreaming(onProgress) {
+        // Worker 미지원 환경 (Node 테스트 등) — 폴백 직행
+        if (typeof Worker === 'undefined') {
+            return this.lifecycleManager.executeAITurn(onProgress);
+        }
+        // 지연 스폰 — 첫 턴에만 생성
+        if (!this.aiStream) {
+            this.aiStream = new AIStreamManager({
+                onFactionUpdate: (batch) => this.applyStreamedBatch(batch),
+                onError: (msg) => console.warn(`[AIStream] ${msg}`),
+            });
+        }
+        // 이미 워커가 죽어 있으면 폴백
+        if (this.streamFailed) {
+            return this.lifecycleManager.executeAITurn(onProgress);
+        }
+        try {
+            const snapshot = AIStreamManager.buildSnapshot(this.store, this.store.getGlobalState().playerFactionId);
+            this.streamBatchCount = 0;
+            await this.aiStream.startMonthlyTurn(snapshot);
+            console.log(`[Engine] Streaming AI batches: ${this.streamBatchCount}`);
+            // 스트리밍 경로에서는 결정이 배치 도착 시점에 이미 소비됨
+            return [];
+        }
+        catch {
+            // 워커 스폰/통신 실패 — 이후 턴부터는 폴백 고정
+            this.streamFailed = true;
+            this.aiStream.terminate();
+            this.aiStream = null;
+            return this.lifecycleManager.executeAITurn(onProgress);
+        }
+    }
+    /** 스트리밍 배치 → 커맨드 즉시 변환 [201] */
+    applyStreamedBatch(batch) {
+        this.streamBatchCount += 1;
+        for (const decision of batch.decisions) {
+            this.convertDecisionToCommand(decision);
+        }
+    }
     convertDecisionToCommand(decision) {
         const officerId = decision.officerId;
         const turn = this.store.getGlobalState().turnCount;
@@ -498,6 +602,90 @@ export class GameEngine {
         if (command) {
             this.enqueueCommand(command);
             this.store.updateOfficer(officerId, { hasActedThisTurn: true });
+        }
+    }
+    /**
+     * 연의전 이벤트 체인 월간 스캔/발동 [300][106-114]
+     *
+     * 1) 큐에 등록된 체인 노드를 조건 평가 후 활성화 → GameEvent 발화 + 연대기 기록
+     * 2) HistoricalEventSystem(삼고초려/관도/적벽 등) 조건 검사 → 발동 시 GameEvent 발화
+     * 3) 발동한 역사 이벤트를 분기 트리거 조건으로 삼아 사실/가상 분기 활성화
+     */
+    processEventChainMonthly() {
+        const gs = this.store.getGlobalState();
+        const turn = gs.turnCount;
+        // 평가 컨텍스트 — 스토어 스냅샷 구성 [300]
+        const warlords = new Map();
+        for (const o of this.store.getAllOfficers()) {
+            warlords.set(o.id, {
+                status: 'alive',
+                factionId: o.factionId,
+                cityId: o.cityId,
+            });
+        }
+        const ctx = {
+            currentYear: gs.time.year,
+            currentTurn: turn,
+            warlords,
+            getAffinity: (officerId) => {
+                const edges = this.store.getRelationships(officerId);
+                return edges.length > 0 ? edges[0].affinity : 0;
+            },
+            getOfficerCity: (officerId) => warlords.get(officerId)?.cityId ?? null,
+        };
+        // 1) 이벤트 체인 큐 스캔/활성화 [300]
+        const activated = this.eventEngine.scanAndActivate(ctx);
+        for (const node of activated) {
+            console.log(`[EventChain] ${node.eventId}: ${node.result.eventName}`);
+            this.chronicle.add('HISTORICAL', node.result.eventName);
+            this.emitEvent({
+                id: `event_chain_${node.eventId}_${Date.now()}`,
+                type: 'HISTORICAL_EVENT',
+                payload: {
+                    eventId: node.eventId,
+                    eventName: node.result.eventName,
+                    dialogueLines: node.result.dialogueLines,
+                    rewards: node.result.rewards,
+                },
+                timestamp: Date.now(),
+                turn,
+            });
+            // 연쇄 이벤트 — 체인상 다음 노드를 큐에 적재
+            const next = this.eventEngine.getNextChainEvent(node.eventId);
+            if (next)
+                this.eventEngine.queueMgr.enqueue(next);
+        }
+        // 2) 역사 이벤트 조건 검사 [106-114]
+        const officerStatus = new Map();
+        for (const o of this.store.getAllOfficers()) {
+            officerStatus.set(o.id, true); // removeOfficer 시 목록에서 사라지므로 존재 = 생존
+        }
+        const factionStatus = new Map();
+        for (const f of this.store.getAllFactions()) {
+            factionStatus.set(f.id, true);
+        }
+        const fired = this.historicalEvents.checkEvents(gs.time.year, gs.time.month, officerStatus, factionStatus);
+        const firedIds = [];
+        for (const ev of fired) {
+            firedIds.push(ev.id);
+            console.log(`[EventChain] 역사 이벤트: ${ev.title}`);
+            this.chronicle.add('HISTORICAL', `${ev.title} — ${ev.description}`);
+            this.emitEvent({
+                id: `historical_${ev.id}_${Date.now()}`,
+                type: 'HISTORICAL_EVENT',
+                payload: { eventId: ev.id, eventName: ev.title, description: ev.description, source: 'historical' },
+                timestamp: Date.now(),
+                turn,
+            });
+        }
+        // 3) 발생 이벤트 기반 시나리오 분기 활성화 [106-114]
+        if (firedIds.length > 0) {
+            const firedSet = new Set(firedIds);
+            for (const branch of this.scenarioBranches.getAvailableBranches(firedSet)) {
+                if (this.scenarioBranches.activateBranch(branch.branchId, this.eventEngine)) {
+                    console.log(`[EventChain] 분기 활성화: ${branch.branchId} (${branch.branchType})`);
+                }
+            }
         }
     }
     processMonthlyMaintenance() {
@@ -556,6 +744,88 @@ export class GameEngine {
                 });
             }
         }
+    }
+    /**
+     * 도시 안정 월간 판정 [148] — 민란 위험도 진정, 아사(군량부족) 소모, 민란 발생
+     *
+     * Python city_manager.py의 process_turn 포팅:
+     * 1) 세력 군량 0이면 소속 도시 전체 아사 — 병력 5% 소모 + 위험도 +15
+     * 2) 월말 위험도 자연 감소 (치안 비례)
+     * 3) 위험도 ≥ 100 && 치안 억제 실패 시 민란 — 도시 소속 이탈 (무주화)
+     */
+    processCitySecurityMonthly() {
+        const turn = this.store.getGlobalState().turnCount;
+        const gs = this.store.getGlobalState();
+        for (const city of this.store.getAllCities()) {
+            if (!city.ownerId)
+                continue;
+            let sec = this.citySecurityStates.get(city.id);
+            if (!sec) {
+                sec = { cityId: city.id, riotRisk: 0, publicOrder: city.developmentStats.publicOrder };
+                this.citySecurityStates.set(city.id, sec);
+            }
+            sec.publicOrder = city.developmentStats.publicOrder;
+            // 1) 아사 판정 — 세력 군량 고갈 시 병력 5% 소모 [148]
+            const faction = this.store.getFaction(city.ownerId);
+            if (faction && faction.food <= 0) {
+                const before = city.development;
+                const result = processStarvation(sec, 0, before);
+                if (result.starveLoss > 0) {
+                    this.store.updateCity(city.id, { development: result.soldiersAfter });
+                    this.securityMonthlyLog.starvations.push({
+                        cityId: city.id,
+                        cityName: city.name,
+                        losses: result.starveLoss,
+                    });
+                    console.log(`[Security] ${city.name} 아사 — 병력 ${result.starveLoss} 소모 (군량 부족)`);
+                    this.chronicle.add('HISTORICAL', `${city.name}에서 굶주림으로 병력 ${result.starveLoss}이 죽었다`);
+                    this.emitEvent({
+                        id: `starvation_${city.id}_${Date.now()}`,
+                        type: 'CITY_STARVATION',
+                        payload: { cityId: city.id, cityName: city.name, losses: result.starveLoss, factionId: city.ownerId },
+                        timestamp: Date.now(),
+                        turn,
+                    });
+                }
+            }
+            // 2) 위험도 자연 감소 (치안 비례)
+            decayRiotRisk(sec, city.developmentStats.publicOrder);
+            // 3) 민란 판정 [148] — roll 주입으로 테스트 결정론 보장
+            const outcome = checkRiot(sec, city.ownerId, this.riotRollOverride() ?? Math.random());
+            if (outcome.occurred) {
+                // 민란 — 도시 소속 이탈 (무주화)
+                this.store.updateCity(city.id, { ownerId: null });
+                this.securityMonthlyLog.riots.push({
+                    cityId: city.id,
+                    cityName: city.name,
+                    fromFactionId: outcome.fromFactionId ?? null,
+                });
+                console.log(`[Security] ${city.name} ${outcome.message}`);
+                this.chronicle.add('DESTROYED', `${city.name}에서 민란이 일어나 도시가 소속 세력에서 이탈했다`);
+                this.emitEvent({
+                    id: `riot_${city.id}_${Date.now()}`,
+                    type: 'CITY_RIOT',
+                    payload: { cityId: city.id, cityName: city.name, fromFactionId: outcome.fromFactionId, turn },
+                    timestamp: Date.now(),
+                    turn,
+                });
+            }
+        }
+        void gs;
+    }
+    /**
+     * 이번 달 도시 안정 동향 peek [148] — 월간 보고서용. consume=true면 읽 후 비운다.
+     */
+    peekMonthlySecurityLog(consume = false) {
+        const snapshot = {
+            riots: [...this.securityMonthlyLog.riots],
+            starvations: [...this.securityMonthlyLog.starvations],
+        };
+        if (consume) {
+            this.securityMonthlyLog.riots = [];
+            this.securityMonthlyLog.starvations = [];
+        }
+        return snapshot;
     }
     /**
      * 포팅 시스템 월간 훅 [76-85][321-340][341-360][421-438]
@@ -815,6 +1085,9 @@ export class GameEngine {
             this.worker = null;
         }
         this.workerPromises.clear();
+        // 스트리밍 AI 워커도 함께 정리 [201]
+        this.aiStream?.terminate();
+        this.aiStream = null;
     }
     /** 외교 엔진 접근자 (UI/AI 용) [70-73] */
     get diplomacyEngine() {
@@ -880,6 +1153,10 @@ export class GameEngine {
                     retireYear: r.retireYear,
                     finalRank: r.finalRank,
                 })),
+                eventChains: {
+                    historical: this.historicalEvents.serialize(),
+                    activeBranchId: this.scenarioBranches.getActiveBranchId(),
+                },
             },
         };
     }
@@ -932,6 +1209,13 @@ export class GameEngine {
             if (data.ported.retiredOfficers) {
                 this.lifeSimulator.restoreRetiredOfficers(data.ported.retiredOfficers);
             }
+            // 연의전 이벤트 발동 이력 복원 — 재발동 방지 [300][106-114]
+            if (data.ported.eventChains) {
+                this.historicalEvents.restore(data.ported.eventChains.historical);
+                if (data.ported.eventChains.activeBranchId) {
+                    this.scenarioBranches.selectBranch(data.ported.eventChains.activeBranchId);
+                }
+            }
         }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {
@@ -939,8 +1223,24 @@ export class GameEngine {
         }
         console.log('[Engine] Save loaded');
     }
-    initWorld(officers, factions, cities, armies) {
+    initWorld(officers, factions, cities, armies, scenarioId) {
         this.store.initWorld(officers, factions, cities, armies);
+        // 도시 안정 상태 초기화 [148]
+        this.citySecurityStates.clear();
+        for (const c of cities) {
+            this.citySecurityStates.set(c.id, {
+                cityId: c.id,
+                riotRisk: 0,
+                publicOrder: c.developmentStats.publicOrder,
+            });
+        }
+        // 시나리오별 연의전 체인 적재 [300][301] — 시나리오 ID가 주어지면 해당 체인만
+        if (scenarioId) {
+            const loaded = loadScenarioEventChains(this.eventEngine, BUILTIN_SCENARIO_EVENTS, scenarioId);
+            if (loaded.length > 0) {
+                console.log(`[EventChain] 시나리오 ${scenarioId} 연의전 체인 ${loaded.length}개 적재`);
+            }
+        }
         this.transition('START');
         console.log('[Engine] World initialized');
     }

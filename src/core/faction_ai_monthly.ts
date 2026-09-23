@@ -14,6 +14,8 @@ import type { City, Faction } from './types.js';
 import { assembleReinforcements } from './reinforcement_system.js';
 import { processBattleSpoils } from './battle_spoils_system.js';
 import { processCaptives } from './ai_captive_system.js';
+// [295] 유저 비개입 자동 전투 시뮬레이터 — AI 출진 판정을 확률 단판에서 라운드제 소모전으로 격상
+import { simulateAutoBattle, type AutoBattleSides, type AutoBattleUnit } from './auto_battle_simulator.js';
 
 /** 전도 정규화 좌표 기반 인접 판정 거리 (main.ts의 ADJACENT_DIST와 동일 기준) */
 const ADJACENT_DIST = 0.16;
@@ -121,9 +123,41 @@ export class FactionAI {
             const reinfPower = Math.floor(reinf.totalTroops / 20);
             const defensePower2 = defensePower + reinfPower;
 
-            // 공성 판정: 공격력 비율 + 난수 (증원 반영)
-            const odds = attackPower / (attackPower + defensePower2);
-            const won = Math.random() < odds;
+            // [295] 자동 전투 시뮬레이션 — 유저 비개입 전투를 라운드제 소모전으로 즉시 해결.
+            // 도시 발전도/병력·수비력·증원을 병력 수치로 환산해 양측 부대를 구성한다.
+            const leaderStats = leader?.stats;
+            const attackerUnit: AutoBattleUnit = {
+                unitId: `${faction.id}_siege_${target.id}`,
+                commanderId: leader?.id ?? faction.id,
+                commanderName: leader?.name ?? faction.name,
+                leadership: leaderStats?.leadership ?? 50,
+                might: leaderStats?.might ?? 50,
+                soldiers: Math.max(1, attackPower),
+                morale: 70,
+                training: 60,
+                isSupplied: true,
+                position: { q: 0, r: 0 },
+            };
+            const defenderUnit: AutoBattleUnit = {
+                unitId: `${target.id}_defense`,
+                commanderId: target.ownerId ?? 'unknown',
+                commanderName: target.name,
+                leadership: 50,
+                might: 50,
+                soldiers: Math.max(1, defensePower2),
+                morale: Math.max(30, Math.min(90, target.loyalty)),
+                training: 50,
+                isSupplied: true,
+                position: { q: 1, r: 0 },
+            };
+            const sides: AutoBattleSides = {
+                attacker: attackerUnit,
+                defender: defenderUnit,
+                siege: true, // 공성전 — 성벽 방어막 보정 적용
+            };
+            const battle = simulateAutoBattle(sides);
+            const won = battle.winner === 'attacker';
+            actions.push(battle.summary);
             if (won) {
                 const prevOwnerId = target.ownerId;
                 // 전투 후처리 [131-145] — 소유권 변경 전에 실행해야 약탈/포획이

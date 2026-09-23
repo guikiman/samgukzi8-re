@@ -33,6 +33,8 @@ export class RelationshipGraphViewer {
         // ============================================================
         /** 클릭 콜백 — 노드 히트 시 노드 id, 배경 클릭 시 null */
         this.onNodeClick = null;
+        /** 더블클릭 콜백 [461-480] — 노드 히트 시 호출 (배경 더블클릭은 무시) */
+        this.onNodeDoubleClick = null;
         this.dragging = false;
         this.dragMoved = false;
         this.lastMouse = null;
@@ -160,8 +162,9 @@ export class RelationshipGraphViewer {
      * 캔버스에 마우스/휠 이벤트를 바인딩한다.
      * 반환값은 정리(detach) 함수 — 패널 닫힘 시 호출.
      */
-    attachInteraction(canvas, getGraph, onNodeClick) {
+    attachInteraction(canvas, getGraph, onNodeClick, onNodeDoubleClick) {
         this.onNodeClick = onNodeClick ?? null;
+        this.onNodeDoubleClick = onNodeDoubleClick ?? null;
         const toCanvas = (e) => {
             const rect = canvas.getBoundingClientRect();
             return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -238,18 +241,30 @@ export class RelationshipGraphViewer {
             this.dragging = false;
             this.lastMouse = null;
         };
+        // [461-480] 더블클릭 — 노드 상세 열기용 (히트한 노드가 있을 때만 콜백)
+        const onDblClick = (e) => {
+            if (!this.onNodeDoubleClick)
+                return;
+            const m = toCanvas(e);
+            const nodeId = hitTest(m.x, m.y);
+            if (nodeId)
+                this.onNodeDoubleClick(nodeId);
+        };
         canvas.addEventListener('wheel', onWheel, { passive: false });
         canvas.addEventListener('mousedown', onDown);
         canvas.addEventListener('mousemove', onMove);
         canvas.addEventListener('mouseup', onUp);
         canvas.addEventListener('mouseleave', onLeave);
+        canvas.addEventListener('dblclick', onDblClick);
         return () => {
             canvas.removeEventListener('wheel', onWheel);
             canvas.removeEventListener('mousedown', onDown);
             canvas.removeEventListener('mousemove', onMove);
             canvas.removeEventListener('mouseup', onUp);
             canvas.removeEventListener('mouseleave', onLeave);
+            canvas.removeEventListener('dblclick', onDblClick);
             this.onNodeClick = null;
+            this.onNodeDoubleClick = null;
             this.currentGraph = null;
         };
     }

@@ -61,6 +61,8 @@ export declare class RelationshipGraphViewer {
     setViewport(v: Partial<Viewport>): void;
     /** 클릭 콜백 — 노드 히트 시 노드 id, 배경 클릭 시 null */
     private onNodeClick;
+    /** 더블클릭 콜백 [461-480] — 노드 히트 시 호출 (배경 더블클릭은 무시) */
+    private onNodeDoubleClick;
     private dragging;
     private dragMoved;
     private lastMouse;
@@ -69,7 +71,7 @@ export declare class RelationshipGraphViewer {
      * 캔버스에 마우스/휠 이벤트를 바인딩한다.
      * 반환값은 정리(detach) 함수 — 패널 닫힘 시 호출.
      */
-    attachInteraction(canvas: HTMLCanvasElement, getGraph: () => GraphLayout | null, onNodeClick?: (nodeId: string | null) => void): () => void;
+    attachInteraction(canvas: HTMLCanvasElement, getGraph: () => GraphLayout | null, onNodeClick?: (nodeId: string | null) => void, onNodeDoubleClick?: (nodeId: string) => void): () => void;
     /** render가 마지막으로 그린 그래프를 기록 — 인터랙션 후 재렌더용 */
     trackGraph(graph: GraphLayout): void;
     exportSVG(graph: GraphLayout, width?: number, height?: number): string;

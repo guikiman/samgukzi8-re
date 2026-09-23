@@ -115,5 +115,20 @@ export class HistoricalEventSystem {
             return e.conditions.some((c) => c.type === "year_reached" && c.params.year >= currentYear);
         });
     }
+    /** 세이브용 스냅샷 — 발동 이력/전역 플래그 보존 (재발동 방지) */
+    serialize() {
+        return {
+            triggeredIds: [...this.triggeredIds],
+            flags: [...this.globalFlags.entries()],
+        };
+    }
+    /** 세이브 복원 — 발동 이력/플래그 재구성 (이벤트 정의는 코드 유지) */
+    restore(data) {
+        this.triggeredIds = new Set(data.triggeredIds);
+        this.globalFlags = new Map(data.flags ?? []);
+        for (const event of this.events) {
+            event.triggered = this.triggeredIds.has(event.id);
+        }
+    }
 }
 //# sourceMappingURL=historical_event_system.js.map

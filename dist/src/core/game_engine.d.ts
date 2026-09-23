@@ -13,6 +13,9 @@ import { StrategicCommandManager } from './strategic_command_system.js';
 import { LifeSimulator } from './life_simulator.js';
 import { MetaManager, LegacyManager, MetaDataManager } from './meta_systems.js';
 import { IntelligenceManager, NarrativeManager, ClimateManager } from './intelligence_narrative_climate.js';
+import { EventEngine } from './event_chain_engine.js';
+import { HistoricalEventSystem } from './historical_event_system.js';
+import { ScenarioBranchManager } from './scenario_branch_manager.js';
 export declare class GameEngine {
     private store;
     private commandQueue;
@@ -50,7 +53,31 @@ export declare class GameEngine {
     readonly narrativeManager: NarrativeManager;
     /** 포팅 시스템: 지역 기후 [321-340] */
     readonly climateManager: ClimateManager;
+    /** 포팅 시스템: 연의전 이벤트 체인 엔진 [300] — 월간 스캔/발동 */
+    readonly eventEngine: EventEngine;
+    /** 역사 이벤트 (삼고초려/관도/적벽 등) — 이벤트 엔진과 연동 [106-114] */
+    readonly historicalEvents: HistoricalEventSystem;
+    /** 시나리오 분기 관리자 [106-114] — 외부(시나리오 로더)에서 분기 등록용 */
+    readonly scenarioBranches: ScenarioBranchManager;
+    /** 도시 안정 상태 [148] — 도시 ID별 민란 위험도 (Python riot_risk) */
+    private citySecurityStates;
+    /** 이번 달 발생한 민란/아사 기록 [148] — 월간 보고서 동향용 */
+    private securityMonthlyLog;
     private isProcessingTurn;
+    /** AI 스트리밍 매니저 [201] — Worker 기반 세력별 스트리밍 AI (실패 시 메인 스레드 폴백) */
+    private aiStream;
+    /** 스트리밍 AI 영구 실패 플래그 — 워커 오류 이후 폴백 고정 */
+    private streamFailed;
+    /** 스트리밍 AI의 월간 결정 수집 버퍼 — executeTurn에서 소비 */
+    private streamBatchCount;
+    /** 민란 억제 롤 오버라이드 [148] — 테스트 결정론용. 값 지정 시 1회 소비 후 자동 해제 */
+    private _riotRollOverride;
+    /**
+     * 민란 억제 롤 강제 지정 [148] — 0이면 억제 롤 성공(진압), 1이면 실패(민란 발생).
+     * 테스트/리플레이 재현용이며, 지정 시 다음 판정 1회에만 적용 후 해제된다.
+     */
+    setRiotRollOverride(value: number | null): void;
+    private riotRollOverride;
     /**
      * 이번 달 포팅 시스템 동향 수집 버퍼 [76-85][321-340][341-360][421-438]
      * processPortedSystemsMonthly가 채우고, 월간 보고서(MonthlyReportSystem)가 peek한다.
@@ -79,8 +106,52 @@ export declare class GameEngine {
     getPendingCommandCount(): number;
     executeTurn(onProgress?: (progress: SchedulerProgress) => void): Promise<void>;
     private resetTurnFlags;
+    /**
+     * Worker 스트리밍 AI 엔진으로 월간 AI 턴을 실행한다 (AGENTS.md §7).
+     *
+     * - Worker 가능 환경: AIStreamManager가 1,000명 무장을 세력 단위로 분할 연산하고,
+     *   각 배치가 도착하는 대로 즉시 커맨드로 변환한다 (스트리밍 반영).
+     * - Worker 불가/오류 (Node 테스트, 구형 브라우저): 기존 TurnScheduler 폴백.
+     *
+     * @returns 소비된 총 결정 수 (스트리밍 + 폴백 합산)
+     */
+    private executeAITurnWithStreaming;
+    /** 스트리밍 배치 → 커맨드 즉시 변환 [201] */
+    private applyStreamedBatch;
     private convertDecisionToCommand;
+    /**
+     * 연의전 이벤트 체인 월간 스캔/발동 [300][106-114]
+     *
+     * 1) 큐에 등록된 체인 노드를 조건 평가 후 활성화 → GameEvent 발화 + 연대기 기록
+     * 2) HistoricalEventSystem(삼고초려/관도/적벽 등) 조건 검사 → 발동 시 GameEvent 발화
+     * 3) 발동한 역사 이벤트를 분기 트리거 조건으로 삼아 사실/가상 분기 활성화
+     */
+    private processEventChainMonthly;
     private processMonthlyMaintenance;
+    /**
+     * 도시 안정 월간 판정 [148] — 민란 위험도 진정, 아사(군량부족) 소모, 민란 발생
+     *
+     * Python city_manager.py의 process_turn 포팅:
+     * 1) 세력 군량 0이면 소속 도시 전체 아사 — 병력 5% 소모 + 위험도 +15
+     * 2) 월말 위험도 자연 감소 (치안 비례)
+     * 3) 위험도 ≥ 100 && 치안 억제 실패 시 민란 — 도시 소속 이탈 (무주화)
+     */
+    private processCitySecurityMonthly;
+    /**
+     * 이번 달 도시 안정 동향 peek [148] — 월간 보고서용. consume=true면 읽 후 비운다.
+     */
+    peekMonthlySecurityLog(consume?: boolean): {
+        riots: Array<{
+            cityId: string;
+            cityName: string;
+            fromFactionId: string | null;
+        }>;
+        starvations: Array<{
+            cityId: string;
+            cityName: string;
+            losses: number;
+        }>;
+    };
     /**
      * 포팅 시스템 월간 훅 [76-85][321-340][341-360][421-438]
      * 1) 전략 명령 진행 — 출진/수송 큐 처리 및 완료 이벤트 발화
@@ -177,6 +248,14 @@ export declare class GameEngine {
                 retireYear: number;
                 finalRank: string;
             }>;
+            /** 연의전 이벤트/분기 [300][106-114] — 발동 이력 보존 */
+            eventChains?: {
+                historical: {
+                    triggeredIds: string[];
+                    flags: Array<[string, boolean]>;
+                };
+                activeBranchId: string | null;
+            };
         };
     };
     saveCompressed(): string;
@@ -215,9 +294,16 @@ export declare class GameEngine {
                 retireYear: number;
                 finalRank: string;
             }>;
+            eventChains?: {
+                historical: {
+                    triggeredIds: string[];
+                    flags: Array<[string, boolean]>;
+                };
+                activeBranchId: string | null;
+            };
         };
     }): void;
-    initWorld(officers: Officer[], factions: Faction[], cities: City[], armies: Army[]): void;
+    initWorld(officers: Officer[], factions: Faction[], cities: City[], armies: Army[], scenarioId?: string): void;
     private delay;
 }
 export declare function getGameEngine(): GameEngine;
