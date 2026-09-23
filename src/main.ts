@@ -34,6 +34,7 @@ import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/re
 import { EventFeedbackEffects, type FeedbackKind } from './core/event_feedback_effects.js';
 import { ChronicleManager } from './core/chronicle_system.js';
 import { resolveCityClimateRegion } from './core/monthly_report.js';
+import { computeVagrantStrength } from './core/vagrant_monthly_actions.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
 // 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
@@ -1022,26 +1023,54 @@ function renderVagrantRaidSection(
 
     const pts = engine.strategicCommand.getStrategyPoints();
     const canAfford = pts >= 30;
-    info.textContent = `⚔️ 방랑군 재기 — ${city.name} 습격 (전략 포인트 30 소비, 보유 ${pts})`;
+    info.textContent = `⚔️ 방랑군 재기 — 습격 대상을 선택하세요 (전략 포인트 30 소비, 보유 ${pts})`;
     info.style.color = canAfford ? '' : '#e07a6a';
 
+    // [83] 습격 대상 목록 — 최약 도시 순 (현재 보고 있는 도시 포함). 방어/역량 임계 표시
+    const targetsEl = document.getElementById('cdp-raid-targets')!;
+    const store = engine['store'];
+    const raidStrength = (() => {
+        try {
+            return computeVagrantStrength(store, gs.playerFactionId!);
+        } catch { return 0; }
+    })();
+    const raidCandidates = store.getAllCities()
+        .filter(c => c.ownerId !== gs.playerFactionId)
+        .sort((a, b) => a.defense - b.defense)
+        .slice(0, 5);
+    targetsEl.innerHTML = raidCandidates.map(c => {
+        const reachable = raidStrength >= c.defense * 10;
+        const isCurrent = c.id === city.id;
+        return `<div class="cdp-raid-target cdp-officer-clickable" data-city-id="${c.id}" ` +
+            `style="display:flex;justify-content:space-between;padding:3px 6px;margin:2px 0;` +
+            `border:1px solid ${isCurrent ? 'var(--gold-dim)' : 'rgba(212,175,55,.12)'};border-radius:4px;` +
+            `cursor:${reachable && canAfford ? 'pointer' : 'not-allowed'};opacity:${reachable ? 1 : 0.45}">` +
+            `<span>${isCurrent ? '📌 ' : ''}${c.name} <span style="opacity:.6">방어 ${c.defense}</span></span>` +
+            `<span style="color:${reachable ? '#7ec97e' : '#e07a6a'};font-size:.9em">${reachable ? '습격 가능' : '역량 부족'}</span></div>`;
+    }).join('');
+    // 대상 클릭 → 해당 도시 선택 후 습격 실행
+    targetsEl.querySelectorAll<HTMLElement>('.cdp-raid-target').forEach(el => {
+        el.addEventListener('click', () => {
+            const targetId = el.dataset.cityId;
+            const target = targetId ? store.getCity(targetId) : null;
+            if (!target) return;
+            const outcome = engine.playerRaidCity(target.id);
+            addLog(outcome.message);
+            const resultEl = document.getElementById('cdp-action-result');
+            if (resultEl) {
+                resultEl.textContent = outcome.message;
+                resultEl.dataset.cityId = target.id;
+            }
+            if (outcome.success) {
+                syncChinaMapCities();
+                const fac = gs.playerFactionId ? store.getFaction(gs.playerFactionId) : null;
+                renderCityDetailPanel(target, fac, true);
+            }
+        });
+    });
+
     const btn = document.getElementById('cdp-raid-btn') as HTMLButtonElement;
-    btn.disabled = !canAfford;
-    btn.textContent = canAfford ? `${city.name} 습격` : '전략 포인트 부족';
-    btn.onclick = () => {
-        const outcome = engine.playerRaidCity(city.id);
-        addLog(outcome.message);
-        const resultEl = document.getElementById('cdp-action-result');
-        if (resultEl) {
-            resultEl.textContent = outcome.message;
-            resultEl.dataset.cityId = city.id;
-        }
-        // 재기 성공 시 지도/패널 갱신
-        if (outcome.success) {
-            syncChinaMapCities();
-            renderCityDetailPanel(city, engine['store'].getFaction(city.id) === null ? null : engine['store'].getFaction(gs.playerFactionId!), true);
-        }
-    };
+    btn.style.display = 'none'; // 목록 클릭 방식으로 대체 — 기존 단일 버튼은 숨김
     section.style.display = 'block';
 }
 

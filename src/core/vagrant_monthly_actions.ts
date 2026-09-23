@@ -18,6 +18,7 @@ import type { GameStore } from './game_store.js';
 import type { OfficerID } from './types.js';
 import { clearVagrantOnCityGain } from './vagrant_revival_system.js';
 import { processBattleSpoils } from './battle_spoils_system.js';
+import { performRevivalCeremony } from './vagrant_revival_system.js';
 
 /**
  * 습격 실패 피로 — 세력별 잔여 금지 개월 수 [83]
@@ -130,13 +131,15 @@ export function processVagrantMonthlyActions(store: GameStore): VagrantRaidResul
                     spoils.factionGoldPlundered > 0 ? `국고 ${spoils.factionGoldPlundered}` : null,
                 ].filter(Boolean).join(' · ');
                 clearVagrantOnCityGain(store, faction.id);
+                // 재기 연출 [83][421-440] — 군주 칭호/명성 승격
+                const ceremony = performRevivalCeremony(store, faction.id);
                 results.push({
                     factionId: faction.id,
                     factionName: faction.name,
                     kind: 'RAID',
                     success: true,
                     capturedCityId: weakest.id,
-                    message: `⚔️ 방랑군 ${faction.name}이(가) ${weakest.name}을(를) 습격해 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}`,
+                    message: `⚔️ 방랑군 ${faction.name}이(가) ${weakest.name}을(를) 습격해 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}${ceremony ? ` ${ceremony.message}` : ''}`,
                 });
             } else {
                 // 습격 실패 패널티 [83] — 1) 결의 훼손: 잔존 무장 충성도 -8 (최소 0)
@@ -203,10 +206,12 @@ export function resolvePlayerRaid(store: GameStore, factionId: string, targetCit
             spoils.factionGoldPlundered > 0 ? `국고 ${spoils.factionGoldPlundered}` : null,
         ].filter(Boolean).join(' · ');
         clearVagrantOnCityGain(store, factionId);
+        // 재기 연출 [83][421-440] — 군주 칭호/명성 승격
+        const ceremony = performRevivalCeremony(store, factionId);
         return {
             success: true,
             capturedCityId: city.id,
-            message: `⚔️ ${faction.name}이(가) ${city.name}을(를) 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}`,
+            message: `⚔️ ${faction.name}이(가) ${city.name}을(를) 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}${ceremony ? ` ${ceremony.message}` : ''}`,
         };
     }
     return { success: false, message: `⚔️ ${city.name} 습격이 격퇴되었습니다 (도시 방어 ${city.defense}).` };

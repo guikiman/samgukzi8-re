@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { GameStore } from '../src/core/game_store.js';
 import { GameEngine } from '../src/core/game_engine.js';
 import { buildWorld } from '../src/core/scenario_system.js';
-import { convertToFactionVagrant } from '../src/core/vagrant_revival_system.js';
+import { convertToFactionVagrant, clearVagrantOnCityGain, performRevivalCeremony } from '../src/core/vagrant_revival_system.js';
 import { computeVagrantStrength, processVagrantMonthlyActions, resolvePlayerRaid, RAID_COMMAND_COST, RAID_FAIL_LOYALTY_PENALTY, RAID_FAIL_FATIGUE_MONTHS } from '../src/core/vagrant_monthly_actions.js';
 import { ChinaMapRenderer } from '../src/core/china_map_renderer.js';
 import { resolveCityClimateRegion } from '../src/core/monthly_report.js';
@@ -220,6 +220,40 @@ describe('방랑군 재기 플레이 흐름 [83][421-440]', () => {
         // peek 읽기 전용 확인
         expect(engine.peekMonthlyPortedLog(false).vagrant.length).toBe(log.vagrant.length);
         void store;
+    });
+
+    it('재기 연출 — 도시 획득 시 군주 칭호/명성/등급이 승격된다 [83][421-440]', () => {
+        const { store, world } = createEngine();
+        const enemyId = world.factions.find(f => f.id !== 'fac_0')!.id;
+        for (const c of world.cities.filter(c => c.ownerId === 'fac_0')) {
+            store.updateCity(c.id, { ownerId: null });
+        }
+        convertToFactionVagrant(store, 'fac_0');
+
+        const leader = store.getOfficer(world.factions.find(f => f.id === 'fac_0')!.leaderId)!;
+        const fameBefore = leader.fame;
+        const rankBefore = leader.rank;
+
+        // 도시 1개 획득 → 재기
+        const firstCity = world.cities.find(c => c.ownerId === enemyId)!;
+        store.updateCity(firstCity.id, { ownerId: 'fac_0' });
+        clearVagrantOnCityGain(store, 'fac_0');
+        const ceremony1 = performRevivalCeremony(store, 'fac_0');
+
+        expect(ceremony1).not.toBeNull();
+        expect(ceremony1!.title).toBe('州牧'); // 거점 1개
+        expect(ceremony1!.fameGain).toBe(50);
+        const after = store.getOfficer(leader.id)!;
+        expect(after.fame).toBe(fameBefore + 50);
+        expect(after.rank).toBe(Math.min(rankBefore, 5)); // 장군급(5) 승격
+        expect(ceremony1!.message).toContain('재기');
+
+        // 칭호 경계: 거점 1개 = 州牧. 시나리오 05의 각 세력은 도시 1개이므로
+        // 다른 적 도시를 하나 더 무주지로 만들어 스토어에 직접 귀속시켜 경계를 검증한다
+        const neutral = store.getAllCities().find(c => c.ownerId === null && c.id !== firstCity.id)!;
+        store.updateCity(neutral.id, { ownerId: 'fac_0' });
+        const ceremony2 = performRevivalCeremony(store, 'fac_0');
+        expect(ceremony2!.title).toBe('刺史'); // 거점 2개
     });
 
     it('습격 성공 시 전리품(자금/국고 약탈)이 점령 도시에 귀속된다 [131-145]', () => {

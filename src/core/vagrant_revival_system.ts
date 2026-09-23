@@ -15,7 +15,7 @@
 
 import type { GameStore } from './game_store.js';
 import type { Faction, FactionID, OfficerID } from './types.js';
-import { OfficerStatus } from './types.js';
+import { OfficerStatus, OfficerRank } from './types.js';
 
 export interface VagrantConversion {
     factionId: FactionID;
@@ -119,4 +119,54 @@ export function clearVagrantOnCityGain(store: GameStore, factionId: FactionID): 
     if (faction?.isVagrant && store.getCitiesByFaction(factionId).length > 0) {
         store.updateFaction(factionId, { isVagrant: false });
     }
+}
+
+/** 재기 연출 결과 — 칭호 승격/명성 상승 내역 */
+export interface RevivalCeremony {
+    factionId: FactionID;
+    factionName: string;
+    leaderId: OfficerID;
+    leaderName: string;
+    /** 군주에게 부여된 칭호 */
+    title: string;
+    /** 명성 상승량 */
+    fameGain: number;
+    message: string;
+}
+
+/**
+ * 재기 연출 [83][421-440] — 방랑군이 도시를 획득해 재기했을 때 군주 격상.
+ * 1) 칭호 부여: 획득 도시 1개 = 『州牧』급, 그 이상 = 『刺史』급
+ * 2) 명성 +50 (천하에 이름을 다시 알림)
+ * 3) 무관 등급 5 미만이면 5(장군급)로 승격
+ * 습격/점령 처리부가 clearVagrantOnCityGain 직후 호출한다.
+ */
+export function performRevivalCeremony(
+    store: GameStore,
+    factionId: FactionID,
+): RevivalCeremony | null {
+    const faction = store.getFaction(factionId);
+    if (!faction) return null;
+    const leader = faction.leaderId ? store.getOfficer(faction.leaderId) : null;
+    if (!leader) return null;
+
+    const cityCount = store.getCitiesByFaction(factionId).length;
+    const title = cityCount >= 2 ? '刺史' : '州牧';
+    const fameGain = 50;
+
+    store.updateOfficer(leader.id, {
+        fame: leader.fame + fameGain,
+        rank: Math.max(OfficerRank.UNRANKED, Math.min(leader.rank, OfficerRank.RANK5)) as OfficerRank,
+    });
+
+    const message = `👑 ${faction.name}의 ${leader.name}이(가) ${title}로 재기했습니다 — 명성 +${fameGain} (거점 ${cityCount})`;
+    return {
+        factionId,
+        factionName: faction.name,
+        leaderId: leader.id,
+        leaderName: leader.name,
+        title,
+        fameGain,
+        message,
+    };
 }
