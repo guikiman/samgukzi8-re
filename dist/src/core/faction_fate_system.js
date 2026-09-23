@@ -47,7 +47,24 @@ export class FactionFateSystem {
             ending = aliveFactions[0].id === gs.playerFactionId ? 'PLAYER_UNIFICATION' : 'AI_UNIFICATION';
             winnerName = aliveFactions[0].name;
         }
-        return { destroyedFactionIds: destroyedIds, destroyedFactionNames: destroyedNames, ending, winnerFactionName: winnerName };
+        // [213] playerFactionId 정합성 — 플레이어 세력이 멸망 목록에 있으면 패배 상태 반환.
+        // 이후 executeTurn의 엔딩 판정에서 PLAYER_DEFEAT 이벤트로 이어져 게임오버 처리된다.
+        const playerDestroyed = gs.playerFactionId !== null && destroyedIds.includes(gs.playerFactionId);
+        let defeatMessage = '';
+        if (playerDestroyed) {
+            const survivor = ending ? winnerName : (this.store.getAllFactions()[0]?.name ?? null);
+            defeatMessage = survivor
+                ? `플레이어 세력이 멸망했습니다 — 천하의 주인은 ${survivor}에게 기울고 있습니다.`
+                : '플레이어 세력이 멸망했습니다.';
+        }
+        return {
+            destroyedFactionIds: destroyedIds,
+            destroyedFactionNames: destroyedNames,
+            ending,
+            winnerFactionName: winnerName,
+            playerFactionDestroyed: playerDestroyed,
+            playerDefeatMessage: defeatMessage,
+        };
     }
 }
 //# sourceMappingURL=faction_fate_system.js.map

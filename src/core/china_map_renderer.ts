@@ -17,6 +17,10 @@ export interface MapCityView {
     isPlayer: boolean;
     garrison: number;
     isSelected?: boolean;
+    /** [321-340] 지도 날씨 오버레이 — 도시 타일 상단 날씨 아이콘 (미지정 시 미표시) */
+    weather?: string;
+    /** [321-340] 수확 보정 (0.5~1.2). 1.0 미만이면 악천후 색상 표시 */
+    harvestModifier?: number;
 }
 
 export interface ChinaMapView {
@@ -94,6 +98,12 @@ export class ChinaMapRenderer {
     private zoom = 1.0;
     private hoveredCityId: string | null = null;
     private cities: MapCityView[] = [];
+
+    /** [321-340] 지도 날씨 오버레이 표시 여부 (기본 on) */
+    private showWeatherOverlay = true;
+
+    /** [1057][321-340] 계절 톤 — 봄/여름/가을/겨울에 따라 대륙 색조 보정 (null=보정 없음) */
+    private seasonTint: 'spring' | 'summer' | 'autumn' | 'winter' | null = null;
 
     /** 영토 셀 (보로노이 근사 그리드) 캐시 */
     private territoryCells: Array<{ ownerColor: string | null; isPlayer: boolean }> = [];
@@ -274,12 +284,12 @@ export class ChinaMapRenderer {
         for (let i = 1; i < outline.length; i++) ctx.lineTo(outline[i][0], outline[i][1]);
         ctx.closePath();
 
-        // 육지 그라데이션
+        // 육지 그라데이션 (+계절 톤 보정 [1057][321-340])
         const landGrad = ctx.createLinearGradient(0, 0, width, height);
         landGrad.addColorStop(0, '#3a4430');
         landGrad.addColorStop(0.5, '#46523a');
         landGrad.addColorStop(1, '#37402e');
-        ctx.fillStyle = landGrad;
+        ctx.fillStyle = this.applySeasonTint(landGrad);
         ctx.fill();
 
         // 해안선
@@ -289,6 +299,9 @@ export class ChinaMapRenderer {
 
         // ---- 세력 영토 (보로노이 색 채우기) [9] ----
         this.drawTerritory(ctx, width, height);
+
+        // ---- [321-340] 지도 날씨 오버레이 — 도시 위 날씨 아이콘 + 악천후 수확 경고 ----
+        this.drawWeatherOverlay(ctx, width, height);
 
         // ---- 산맥 장식 (서부) ----
         ctx.strokeStyle = 'rgba(150, 140, 110, 0.5)';
@@ -531,6 +544,69 @@ export class ChinaMapRenderer {
         const g = Math.round(parseInt(m[2], 16) + (255 - parseInt(m[2], 16)) * t);
         const b = Math.round(parseInt(m[3], 16) + (255 - parseInt(m[3], 16)) * t);
         return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    /**
+     * [321-340] 지도 날씨 오버레이 — 각 도시 위치에 날씨 아이콘을 그리고,
+     * 수확 보정 0.8 미만 악천후 도시에는 경고 링을 표시한다.
+     */
+    private drawWeatherOverlay(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+        if (!this.showWeatherOverlay) return;
+        const icons: Record<string, string> = {
+            SUNNY: '☀️', CLOUDY: '☁️', RAIN: '🌧️', STORM: '⛈️', SNOW: '❄️', FOG: '🌫️', HEATWAVE: '🔥',
+        };
+        const s = this.zoom;
+        for (const city of this.cities) {
+            if (!city.weather) continue;
+            const { px, py } = this.normToPixel(city.x, city.y, width, height);
+            const margin = 60 * s;
+            if (px < -margin || px > width + margin || py < -margin || py > height + margin) continue;
+            // 도시 아이콘 좌상단에 날씨 표시 — 성 아이콘과 겹침 방지
+            const wx = px - 16 * s;
+            const wy = py - 16 * s;
+            ctx.font = `${Math.max(10, 12 * s)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(icons[city.weather] ?? '🌤️', wx, wy);
+            // 악천후 경고 링 (수확 페널티 도시)
+            if (city.harvestModifier !== undefined && city.harvestModifier < 0.8) {
+                ctx.strokeStyle = 'rgba(224, 122, 106, 0.85)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(px, py, 15 * s, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+    }
+
+    /** 지도 날씨 오버레이 표시 토글 [321-340] (기본 on) */
+    setShowWeatherOverlay(show: boolean): void {
+        this.showWeatherOverlay = show;
+    }
+
+    /**
+     * [1057][321-340] 계절 톤 설정 — 대륙/바다 색조를 계절에 맞게 보정.
+     * @param season 'spring'|'summer'|'autumn'|'winter' 또는 null(보정 해제)
+     */
+    setSeasonTint(season: 'spring' | 'summer' | 'autumn' | 'winter' | null): void {
+        this.seasonTint = season;
+    }
+
+    /** 계절별 대륙 색 보정 — 태평성세/설한/황염의 계절감 표현 */
+    private applySeasonTint(grad: CanvasGradient): CanvasGradient {
+        if (!this.seasonTint) return grad;
+        const tints: Record<NonNullable<typeof this.seasonTint>, Array<[number, string]>> = {
+            spring: [[0, 'rgba(140, 200, 120, 0.18)'], [1, 'rgba(140, 200, 120, 0.10)']],
+            summer: [[0, 'rgba(90, 180, 90, 0.22)'], [1, 'rgba(60, 150, 70, 0.12)']],
+            autumn: [[0, 'rgba(220, 150, 60, 0.20)'], [1, 'rgba(180, 110, 40, 0.10)']],
+            winter: [[0, 'rgba(200, 220, 245, 0.22)'], [1, 'rgba(150, 180, 220, 0.12)']],
+        };
+        for (const [stop, color] of tints[this.seasonTint]) {
+            grad.addColorStop(stop, color);
+        }
+        return grad;
     }
 
     private drawCity(ctx: CanvasRenderingContext2D, city: MapCityView, width: number, height: number): void {

@@ -1,9 +1,13 @@
 /**
  * 월간 보고서 [E1-361 연계] — 월말 정산 후 수입/지출/AI 행동 요약
+ * + 포팅 시스템 월간 동향 섹션 [76-85][321-340][341-360][421-438]
  */
 export class MonthlyReportSystem {
-    constructor(store) {
+    constructor(store, 
+    /** 엔진이 수집한 최근 월간 포팅 시스템 요약 peek (없으면 섹션 생략) */
+    portedProvider) {
         this.store = store;
+        this.portedProvider = portedProvider;
     }
     generate() {
         const gs = this.store.getGlobalState();
@@ -33,6 +37,7 @@ export class MonthlyReportSystem {
                 cities: this.store.getCitiesByFaction(f.id).length,
                 officers: this.store.getAllOfficers().filter(o => o.factionId === f.id).length,
             })),
+            ported: this.portedProvider?.() ?? null,
         };
     }
 }

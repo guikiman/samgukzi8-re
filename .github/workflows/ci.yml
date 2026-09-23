@@ -1,38 +1,80 @@
-name: CI — TypeScript Build + Test
+name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, hippocamp]
   pull_request:
-    branches: [main]
+    branches: [main, hippocamp]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript type check (tsc --noEmit)
+      - name: Type check
         run: npx tsc --noEmit
 
-      - name: Run unit tests (Vitest)
-        run: npx vitest run --reporter=verbose
+      - name: Unit & integration tests
+        run: npx vitest run
 
-      - name: Coverage report
-        run: npx vitest run --coverage
-        continue-on-error: true
+      - name: Build
+        run: npm run build
 
-      - name: Notify failure
-        if: failure()
+      - name: Browser E2E smoke
+        run: node tests/e2e/browser_smoke.mjs
+
+  deploy:
+    # 테스트 통과 시 기본 브랜치에 한해 GitHub Pages 배포
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hippocamp')
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # 게임은 루트의 index.html + dist/src/* + style.css 구조로 서빙됨 —
+      # node_modules 제외를 위해 필요한 산출물만 pages/ 로 모은다
+      - name: Assemble pages directory
         run: |
-          echo "::error::Build or test failed. Check logs above."
+          mkdir -p pages
+          cp index.html style.css pages/
+          cp -r dist pages/dist
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

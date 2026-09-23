@@ -24,11 +24,22 @@ import { processMonthlyRoamingEvents } from './roaming_event_system.js';
 import { processMonthlyFreeOfficerVisits } from './free_officer_visit_system.js';
 import { processMonthlySwornBrotherRescues } from './sworn_brother_rescue_system.js';
 import { processMonthlySwornBrotherPacts } from './sworn_brother_pact_system.js';
+// Python 시스템 모듈 TS 포팅 통합 [76-85][213-214][321-340][341-360][421-438][431-432][441-460]
+import { StrategicCommandManager } from './strategic_command_system.js';
+import { LifeSimulator } from './life_simulator.js';
+import { MetaManager, LegacyManager, MetaDataManager } from './meta_systems.js';
+import { IntelligenceManager, NarrativeManager, ClimateManager } from './intelligence_narrative_climate.js';
 export class GameEngine {
     constructor(store) {
         this.worker = null;
         this.bootstrap = null;
         this.isProcessingTurn = false;
+        /**
+         * 이번 달 포팅 시스템 동향 수집 버퍼 [76-85][321-340][341-360][421-438]
+         * processPortedSystemsMonthly가 채우고, 월간 보고서(MonthlyReportSystem)가 peek한다.
+         * peekMonthlyPortedLog(hasRead=true)로 읽으면 비워진다.
+         */
+        this.portedMonthlyLog = { campaigns: [], transports: [], collapsedNetworks: [], retired: [] };
         this.store = store ?? gameStore;
         this.commandQueue = new CommandQueue(200);
         this.aiProcessor = new AITurnProcessor(this.store, 50);
@@ -46,6 +57,15 @@ export class GameEngine {
         this.diplomacyAI = new FactionDiplomacyAI(this.store, this.diplomacy);
         this.chronicle = new ChronicleManager();
         this.chronicle.attachStore(this.store);
+        // 포팅 시스템 초기화 [76-85][213-214][321-340][341-360][421-438][431-432][441-460]
+        this.strategicCommand = new StrategicCommandManager('player');
+        this.lifeSimulator = new LifeSimulator();
+        this.metaManager = MetaManager.getInstance();
+        this.legacyManager = new LegacyManager();
+        this.metaDataManager = new MetaDataManager();
+        this.intelligenceManager = new IntelligenceManager();
+        this.narrativeManager = new NarrativeManager();
+        this.climateManager = new ClimateManager();
         this.currentPhase = GamePhase.TITLE;
         this.phaseHistory = [];
         this.eventListeners = new Map();
@@ -238,6 +258,9 @@ export class GameEngine {
                 }
             }
             this.processMonthlyMaintenance();
+            // 포팅 시스템 월간 훅 [76-85][321-340][341-360][421-438] — 전략 명령 진행, 첩보망 유지비,
+            // 지역 기후 전이, 계절 기반 수확 보정, 고령 무장 은퇴
+            this.processPortedSystemsMonthly();
             // AI 세력 월간 자율 외교 (선전포고/휴전/동맹) [341-360]
             const diploReports = this.diplomacyAI.runMonthly();
             for (const r of diploReports) {
@@ -363,6 +386,17 @@ export class GameEngine {
                     id: `game_ending_${Date.now()}`,
                     type: 'GAME_ENDING',
                     payload: { ending: fateReport.ending, winner: fateReport.winnerFactionName },
+                    timestamp: Date.now(),
+                    turn: this.store.getGlobalState().turnCount,
+                });
+            }
+            // [213] playerFactionId 정합성 — 플레이어 세력 멸망 시 패배 이벤트 발화 (게임오버 트리거)
+            if (fateReport.playerFactionDestroyed) {
+                console.log('[Engine] 플레이어 세력 멸망 — PLAYER_DEFEAT');
+                this.emitEvent({
+                    id: `player_defeat_${Date.now()}`,
+                    type: 'PLAYER_DEFEAT',
+                    payload: { message: fateReport.playerDefeatMessage ?? '플레이어 세력이 멸망했습니다.' },
                     timestamp: Date.now(),
                     turn: this.store.getGlobalState().turnCount,
                 });
@@ -510,6 +544,129 @@ export class GameEngine {
             }
         }
     }
+    /**
+     * 포팅 시스템 월간 훅 [76-85][321-340][341-360][421-438]
+     * 1) 전략 명령 진행 — 출진/수송 큐 처리 및 완료 이벤트 발화
+     * 2) 첩보망 유지비 — 레벨 1 소모, 미유지 시 붕괴 이벤트
+     * 3) 지역 기후 전이 — 계절 기반 날씨 전이 및 수확 보정 반영
+     * 4) 고령 무장 은퇴 — 60세 도달 무장 은퇴 기록
+     */
+    processPortedSystemsMonthly() {
+        const turn = this.store.getGlobalState().turnCount;
+        // 1) 전략 명령 진행 [76-79]
+        const { campaignsCompleted, transportsCompleted } = this.strategicCommand.processTurn(turn);
+        for (const campaign of campaignsCompleted) {
+            const leader = this.store.getOfficer(campaign.army.leaderId);
+            this.portedMonthlyLog.campaigns.push({
+                targetCity: campaign.targetCity,
+                leaderName: leader?.name ?? campaign.army.leaderId,
+                soldiers: campaign.army.soldiers,
+            });
+            this.emitEvent({
+                id: `campaign_${campaign.targetCity}_${Date.now()}`,
+                type: 'CAMPAIGN_ORDER_COMPLETED',
+                payload: { targetCityId: campaign.targetCity, leaderId: campaign.army.leaderId, soldiers: campaign.army.soldiers },
+                timestamp: Date.now(),
+                turn,
+            });
+        }
+        for (const t of transportsCompleted) {
+            this.portedMonthlyLog.transports.push({
+                fromCity: t.fromCity,
+                toCity: t.toCity,
+                gold: t.gold,
+                food: t.food,
+                soldiers: t.soldiers,
+            });
+            this.emitEvent({
+                id: `transport_${t.toCity}_${Date.now()}`,
+                type: 'TRANSPORT_COMPLETED',
+                payload: { fromCityId: t.fromCity, toCityId: t.toCity, gold: t.gold, food: t.food, soldiers: t.soldiers },
+                timestamp: Date.now(),
+                turn,
+            });
+        }
+        // 2) 첩보망 유지비 [346] — 월간 레벨 1 소모
+        for (const n of this.intelligenceManager.getAllNetworks()) {
+            const survived = this.intelligenceManager.decayNetworks(n.factionId, n.cityId, 1);
+            if (!survived) {
+                this.portedMonthlyLog.collapsedNetworks.push({ factionId: n.factionId, cityId: n.cityId });
+                this.emitEvent({
+                    id: `intel_collapse_${n.factionId}_${n.cityId}_${Date.now()}`,
+                    type: 'INTELLIGENCE_NETWORK_COLLAPSED',
+                    payload: { factionId: n.factionId, cityId: n.cityId },
+                    timestamp: Date.now(),
+                    turn,
+                });
+            }
+        }
+        // 3) 지역 기후 전이 [321-340] — 계절 기반 날씨 전이
+        const month = this.store.getGlobalState().time.month;
+        const season = month >= 3 && month <= 5 ? 'SPRING'
+            : month >= 6 && month <= 8 ? 'SUMMER'
+                : month >= 9 && month <= 11 ? 'AUTUMN' : 'WINTER';
+        const seasonWeather = {
+            SPRING: ['SUNNY', 'CLOUDY', 'RAIN'],
+            SUMMER: ['SUNNY', 'HEATWAVE', 'STORM'],
+            AUTUMN: ['SUNNY', 'CLOUDY', 'FOG'],
+            WINTER: ['SNOW', 'CLOUDY'],
+        };
+        const seasonTemp = { SPRING: 16, SUMMER: 30, AUTUMN: 14, WINTER: -2 };
+        for (const c of this.climateManager.getAllClimates()) {
+            const pool = seasonWeather[season];
+            const weather = pool[Math.floor(Math.random() * pool.length)];
+            const updated = this.climateManager.updateClimate(c.regionId, weather, seasonTemp[season]);
+            if (updated && updated.harvestModifier < 1.0) {
+                // 악천후 수확 보정을 도시 소속 세력에 반영 — 군량 차감
+                for (const city of this.store.getAllCities()) {
+                    if (city.ownerId) {
+                        const faction = this.store.getFaction(city.ownerId);
+                        if (faction) {
+                            const penalty = Math.round((1.0 - updated.harvestModifier) * 50);
+                            if (penalty > 0) {
+                                this.store.updateFaction(faction.id, { food: Math.max(0, faction.food - penalty) });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 4) 고령 무장 은퇴 [434] — 60세 도달 시 은퇴 기록
+        const year = this.store.getGlobalState().time.year;
+        for (const officer of this.store.getAllOfficers()) {
+            const age = year - officer.birthYear;
+            if (this.lifeSimulator.canRetire(officer.id, age)) {
+                this.lifeSimulator.retire(officer.id, year);
+                this.portedMonthlyLog.retired.push({ officerName: officer.name, age });
+                this.emitEvent({
+                    id: `retire_${officer.id}_${Date.now()}`,
+                    type: 'OFFICER_RETIRED',
+                    payload: { officerId: officer.id, officerName: officer.name, age, year },
+                    timestamp: Date.now(),
+                    turn,
+                });
+            }
+        }
+    }
+    /**
+     * 이번 달 포팅 시스템 동향 peek [76-85][321-340][341-360][421-438]
+     * 월간 보고서(MonthlyReportSystem)가 호출. consume=true면 읽 후 버퍼를 비운다.
+     */
+    peekMonthlyPortedLog(consume = false) {
+        const snapshot = {
+            campaigns: [...this.portedMonthlyLog.campaigns],
+            transports: [...this.portedMonthlyLog.transports],
+            collapsedNetworks: [...this.portedMonthlyLog.collapsedNetworks],
+            retired: [...this.portedMonthlyLog.retired],
+        };
+        if (consume) {
+            this.portedMonthlyLog.campaigns = [];
+            this.portedMonthlyLog.transports = [];
+            this.portedMonthlyLog.collapsedNetworks = [];
+            this.portedMonthlyLog.retired = [];
+        }
+        return snapshot;
+    }
     processWeatherEffect() {
         const gs = this.store.getGlobalState();
         if (gs.weather === 'STORM' || gs.weather === 'SNOW') {
@@ -630,6 +787,27 @@ export class GameEngine {
             diplomacy: this.diplomacy.serialize(),
             // 연대기 포함 [Y-메타][441-460] — 이어하기 후에도 역사 유지
             chronicle: this.chronicle.serialize(),
+            // 포팅 시스템 상태 포함 — 이어하기 후 군단/기후/내러티브 복원
+            ported: {
+                strategic: this.strategicCommand.serialize(),
+                climates: this.climateManager.getAllClimates().map((c) => ({
+                    regionId: c.regionId,
+                    weather: c.weather,
+                    temperature: c.temperature,
+                    harvestModifier: c.harvestModifier,
+                })),
+                narratives: this.narrativeManager.getEvents().map((e) => ({
+                    id: e.id,
+                    description: e.description,
+                    recordedAt: e.recordedAt,
+                })),
+                intelNetworks: this.intelligenceManager.serializeNetworks(),
+                retiredOfficers: this.lifeSimulator.getAllRetiredOfficers().map((r) => ({
+                    officerId: r.officerId,
+                    retireYear: r.retireYear,
+                    finalRank: r.finalRank,
+                })),
+            },
         };
     }
     saveCompressed() {
@@ -665,6 +843,22 @@ export class GameEngine {
         // 연대기 복원 (구버전 세이브 호환: 없으면 빈 상태 유지) [Y-메타][441-460]
         if (data.chronicle) {
             this.chronicle.load(data.chronicle);
+        }
+        // 포팅 시스템 복원 (구버전 세이브 호환: 없으면 초기화 상태 유지)
+        if (data.ported) {
+            this.strategicCommand.restore(data.ported.strategic);
+            for (const c of data.ported.climates) {
+                this.climateManager.updateClimate(c.regionId, c.weather, c.temperature);
+            }
+            for (const e of data.ported.narratives) {
+                this.narrativeManager.recordEvent(e.description, e.recordedAt);
+            }
+            if (data.ported.intelNetworks) {
+                this.intelligenceManager.restoreNetworks(data.ported.intelNetworks);
+            }
+            if (data.ported.retiredOfficers) {
+                this.lifeSimulator.restoreRetiredOfficers(data.ported.retiredOfficers);
+            }
         }
         this.commandQueue.clear();
         for (const cmdData of data.commands) {

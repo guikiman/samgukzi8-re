@@ -33,6 +33,7 @@ import { getReputationDiplomacyModifier, describeReputationModifier } from './co
 import { getLeaderReputationVisual, getOfficerReputationVisual } from './core/reputation_visuals.js';
 import { EventFeedbackEffects, type FeedbackKind } from './core/event_feedback_effects.js';
 import { ChronicleManager } from './core/chronicle_system.js';
+import { resolveCityClimateRegion } from './core/monthly_report.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
 // 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
@@ -725,6 +726,9 @@ function syncChinaMapCities(): void {
             const fac = c.ownerId ? store.getFaction(c.ownerId) : null;
             const x = c.mapX ?? (c.hexCoord.q + 4) / 8;
             const y = c.mapY ?? (c.hexCoord.r + 4) / 8;
+            // [321-340] 지도 날씨 오버레이 — 도시 기후권의 현재 날씨/수확 보정
+            const regionId = resolveCityClimateRegion(c.name, c.mapX, c.mapY);
+            const climate = engine.climateManager.getClimate(regionId);
             return {
                 id: c.id,
                 name: c.name,
@@ -734,6 +738,8 @@ function syncChinaMapCities(): void {
                 isPlayer: c.ownerId === gs.playerFactionId,
                 garrison: c.development * 100,
                 isSelected: false,
+                weather: climate?.weather,
+                harvestModifier: climate?.harvestModifier,
             } as MapCityView;
         });
         chinaMap.setCities(worldCities);
@@ -978,6 +984,9 @@ function renderCityDetailPanel(city: import('./core/types.js').City, faction: im
     // 등용 섹션 [24]: 내 도시 + 도시에 재야 무장이 있을 때
     renderRecruitSection(city, isPlayerCity);
 
+    // [83] 방랑군 습격 섹션 — 플레이어 세력이 방랑군이고, 보고 있는 도시가 적/무주 도시일 때
+    renderVagrantRaidSection(city, faction, isPlayerCity);
+
     // 전환 시 콘텐츠 페이드 애니메이션 재생 (같은 도시 재클릭 시 생략)
     if (switched) {
         cityDetailPanel.querySelectorAll<HTMLElement>('.cdp-section, .cdp-header').forEach(el => {
@@ -988,6 +997,52 @@ function renderCityDetailPanel(city: import('./core/types.js').City, faction: im
     }
 
     cityDetailPanel.style.display = 'block';
+}
+
+/**
+ * [83] 방랑군 습격 섹션 — 플레이어 세력이 방랑군일 때 열리는 재기 커맨드.
+ * 전략 포인트 30 소비, 인접 도시(자기 도시 제외)를 대상으로 습격 판정.
+ */
+function renderVagrantRaidSection(
+    city: import('./core/types.js').City,
+    faction: import('./core/types.js').Faction | null,
+    isPlayerCity: boolean,
+): void {
+    const section = document.getElementById('cdp-raid-section')!;
+    const info = document.getElementById('cdp-raid-info')!;
+    if (!engine) { section.style.display = 'none'; return; }
+
+    const gs = engine['store'].getGlobalState();
+    const pf = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
+    // 방랑군 + 비(非)자기 도시에서만 표시 (자기 도시면 일반 출진 섹션이 이미 활성)
+    if (!pf?.isVagrant || isPlayerCity) {
+        section.style.display = 'none';
+        return;
+    }
+
+    const pts = engine.strategicCommand.getStrategyPoints();
+    const canAfford = pts >= 30;
+    info.textContent = `⚔️ 방랑군 재기 — ${city.name} 습격 (전략 포인트 30 소비, 보유 ${pts})`;
+    info.style.color = canAfford ? '' : '#e07a6a';
+
+    const btn = document.getElementById('cdp-raid-btn') as HTMLButtonElement;
+    btn.disabled = !canAfford;
+    btn.textContent = canAfford ? `${city.name} 습격` : '전략 포인트 부족';
+    btn.onclick = () => {
+        const outcome = engine.playerRaidCity(city.id);
+        addLog(outcome.message);
+        const resultEl = document.getElementById('cdp-action-result');
+        if (resultEl) {
+            resultEl.textContent = outcome.message;
+            resultEl.dataset.cityId = city.id;
+        }
+        // 재기 성공 시 지도/패널 갱신
+        if (outcome.success) {
+            syncChinaMapCities();
+            renderCityDetailPanel(city, engine['store'].getFaction(city.id) === null ? null : engine['store'].getFaction(gs.playerFactionId!), true);
+        }
+    };
+    section.style.display = 'block';
 }
 
 /**
@@ -1294,7 +1349,11 @@ function renderFrame(_dt: number): void {
     if (isBattleMode && battleFrontend) {
         battleFrontend.render(ctx, canvas.width, canvas.height);
     } else {
-        // 월드 화면: 중국 전도 [9]
+        // 월드 화면: 중국 전도 [9] + 계절 톤 [1057][321-340]
+        try {
+            const gsSeason = engine ? monthToSeason(engine['store'].getGlobalState().time.month) : null;
+            if (chinaMap['seasonTint'] !== gsSeason) chinaMap.setSeasonTint(gsSeason);
+        } catch { /* 엔진 미초기화 */ }
         chinaMap.render();
         const state = engine?.getCurrentPhase();
         if (state) {
@@ -2032,6 +2091,16 @@ function init(): void {
     engine.subscribe('GAME_ENDING', (event: any) => {
         showEnding(event.payload.ending as string, event.payload.winner as string);
         chronicle.add('ENDING', `${event.payload.winner}이(가) 천하를 통일했다 — ${event.payload.ending}`);
+        // 메타 시스템 연동 [213-214] — 엔딩 도달 기록 + 나비 효과 내러티브
+        engine.metaManager.triggerEnding(event.payload.ending as string);
+        engine.narrativeManager.recordEvent(`엔딩 도달: ${event.payload.ending}`);
+    });
+    // [213] playerFactionId 정합성 — 플레이어 세력 멸망 시 패배 화면 (세력멸亡 엔딩)
+    engine.subscribe('PLAYER_DEFEAT', (event: any) => {
+        showEnding('PLAYER_FACTION_DESTROYED', null);
+        chronicle.add('DESTROYED', event.payload.message as string);
+        engine.narrativeManager.recordEvent(event.payload.message as string);
+        addLog(event.payload.message as string);
     });
     // 지옥 난이도 제약 이벤트 [X-난이도]
     engine.subscribe('HELL_CONSTRAINT', (event: any) => {
@@ -2066,17 +2135,22 @@ function showEnding(ending: string, winnerName: string | null): void {
     const playerFaction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
 
     const isVictory = ending === 'PLAYER_UNIFICATION';
+    const isPlayerDestroyed = ending === 'PLAYER_FACTION_DESTROYED';
     screen.classList.toggle('victory', isVictory);
     screen.classList.toggle('defeat', !isVictory);
-    title.textContent = isVictory ? '天下統一' : (ending === 'AI_UNIFICATION' ? '霸業途半' : '勢力減亡');
+    title.textContent = isVictory ? '天下統一'
+        : (ending === 'AI_UNIFICATION' ? '霸業途半' : '勢力減亡');
     sub.textContent = isVictory
         ? `${playerFaction?.name ?? ''} — 천하를 통일했습니다`
-        : `${winnerName ?? '타세력'}이(가) 천하를 통일했습니다`;
+        : isPlayerDestroyed
+            ? '플레이어 세력은 天下の夢을 이루지 못했습니다'
+            : `${winnerName ?? '타세력'}이(가) 천하를 통일했습니다`;
     body.innerHTML = isVictory
         ? `긴 전란이 끝나고 천하에 평화가 찾아왔습니다.<br>${gs.time.year}년 ${playerFaction?.name ?? ''}의 강토에 태평성세가 열립니다.`
         : `전란의 소용돌이 속에 ${playerFaction?.name ?? '세력'}은(는) 역사 속으로 사라졌습니다.<br>다음 판에서는 누가 천하를 얻을까요.`;
     screen.style.display = 'flex';
-    addLog(isVictory ? '🏆 천하통일 — 승리!' : '💀 게임 오버');
+    addLog(isVictory ? '🏆 천하통일 — 승리!'
+        : isPlayerDestroyed ? '💀 플레이어 세력 멸망 — 게임 오버' : '💀 게임 오버');
 }
 
 // 엔딩 → 타이틀 복귀
@@ -2091,7 +2165,30 @@ document.getElementById('btn-ending-title')!.addEventListener('click', () => {
  */
 function showMonthlyReport(): void {
     if (!engine || !isRunning) return;
-    const report = new MonthlyReportSystem(engine['store']).generate();
+    // 포팅 시스템 월간 동향 peek (읽기 전용 — 다음 달 보고서를 위해 버퍼 유지) [76-85][321-340][341-360][421-438]
+    const store = engine['store'];
+    const report = new MonthlyReportSystem(store, () => ({
+        ...engine.peekMonthlyPortedLog(false),
+        climates: engine.climateManager.getAllClimates().map(c => ({
+            regionId: c.regionId,
+            weather: c.weather,
+            temperature: c.temperature,
+            harvestModifier: c.harvestModifier,
+        })),
+        // 도시별 기후 표 [321-340] — 도시 위치를 기후권에 매핑해 소유 세력과 함께 표시
+        cityClimates: store.getAllCities().map(c => {
+            const regionId = resolveCityClimateRegion(c.name, c.mapX, c.mapY);
+            const climate = engine.climateManager.getClimate(regionId);
+            return {
+                cityName: c.name,
+                regionId,
+                weather: climate?.weather ?? 'SUNNY',
+                temperature: climate?.temperature ?? 18,
+                harvestModifier: climate?.harvestModifier ?? 1.0,
+                ownerId: c.ownerId,
+            };
+        }),
+    })).generate();
     const panel = document.getElementById('monthly-report-panel')!;
     document.getElementById('mr-title')!.textContent = `月報 — ${report.year}년 ${report.month}월 보고`;
     document.getElementById('mr-finance')!.innerHTML = `
@@ -2105,7 +2202,56 @@ function showMonthlyReport(): void {
     document.getElementById('mr-factions')!.innerHTML = report.factions.map(f =>
         `<div class="mr-row"><span class="mr-name">${f.name}</span><span class="mr-val">골드 ${f.gold} · 도시 ${f.cities} · 무장 ${f.officers}</span></div>`).join('')
         || '<div class="mr-row">생존 타세력 없음</div>';
+    renderMonthlyPortedSection(report.ported ?? null);
     panel.style.display = 'block';
+}
+
+/** 월간 동향 섹션 렌더 — 출진/수송/첩보망/기후/은퇴 [76-85][321-340][341-360][421-438] */
+function renderMonthlyPortedSection(ported: import('./core/monthly_report.js').PortedMonthlySection | null): void {
+    const el = document.getElementById('mr-ported');
+    if (!el) return;
+    if (!ported) {
+        el.innerHTML = '<div class="mr-row">동향 데이터 없음</div>';
+        return;
+    }
+    const rows: string[] = [];
+    for (const c of ported.campaigns) {
+        rows.push(`<div class="mr-row"><span class="mr-name">⚔️ 출진 완료</span><span class="mr-val">${c.leaderName} 군단 → ${c.targetCity} (병력 ${c.soldiers.toLocaleString()})</span></div>`);
+    }
+    for (const t of ported.transports) {
+        rows.push(`<div class="mr-row"><span class="mr-name">📦 수송 완료</span><span class="mr-val">${t.fromCity} → ${t.toCity} (금 ${t.gold} · 군량 ${t.food} · 병력 ${t.soldiers})</span></div>`);
+    }
+    for (const n of ported.collapsedNetworks) {
+        rows.push(`<div class="mr-row"><span class="mr-name">🕸️ 첩보망 붕괴</span><span class="mr-val">${n.cityId} — 유지비 미납 (${n.factionId})</span></div>`);
+    }
+    const weatherIcon = (w: string): string =>
+        ({ SUNNY: '☀️', CLOUDY: '☁️', RAIN: '🌧️', STORM: '⛈️', SNOW: '❄️', FOG: '🌫️', HEATWAVE: '🔥' } as Record<string, string>)[w] ?? '🌤️';
+    if (ported.climates.length > 0) {
+        rows.push(`<div class="mr-row"><span class="mr-name">${weatherIcon(ported.climates[0].weather)} 기후</span><span class="mr-val">${ported.climates.map(c => `${c.regionId} ${c.weather} ${c.temperature}°C (수확 ×${c.harvestModifier})`).join(' · ')}</span></div>`);
+    }
+    // 도시별 기후·수확 보정 표 [321-340]
+    if (ported.cityClimates && ported.cityClimates.length > 0) {
+        const rowsHtml = ported.cityClimates.map(cc => {
+            const icon = weatherIcon(cc.weather);
+            const modPct = Math.round(cc.harvestModifier * 100);
+            const modColor = cc.harvestModifier >= 1.0 ? '#7ec97e' : (cc.harvestModifier >= 0.8 ? '#e0c26a' : '#e07a6a');
+            const ownerTag = cc.ownerId ? `<span style="opacity:.6">(${cc.ownerId})</span>` : '<span style="opacity:.4">(무주)</span>';
+            return `<tr>` +
+                `<td style="padding:2px 8px">${icon} ${cc.cityName}</td>` +
+                `<td style="padding:2px 8px;opacity:.65">${cc.regionId}</td>` +
+                `<td style="padding:2px 8px">${cc.temperature}°C</td>` +
+                `<td style="padding:2px 8px;color:${modColor};font-weight:700">×${cc.harvestModifier} (${modPct}%)</td>` +
+                `<td style="padding:2px 8px">${ownerTag}</td></tr>`;
+        }).join('');
+        rows.push(`<div class="mr-row"><table style="width:100%;border-collapse:collapse;font-size:.72rem">` +
+            `<tr style="opacity:.55"><th style="text-align:left;padding:2px 8px">도시</th><th style="text-align:left;padding:2px 8px">기후권</th>` +
+            `<th style="text-align:left;padding:2px 8px">기온</th><th style="text-align:left;padding:2px 8px">수확 보정</th><th style="text-align:left;padding:2px 8px">소유</th></tr>` +
+            rowsHtml + `</table></div>`);
+    }
+    for (const r of ported.retired) {
+        rows.push(`<div class="mr-row"><span class="mr-name">🌾 은퇴</span><span class="mr-val">${r.officerName} (${r.age}세) — 전장을 떠났습니다</span></div>`);
+    }
+    el.innerHTML = rows.join('') || '<div class="mr-row">이번 달 주요 동향 없음</div>';
 }
 document.getElementById('mr-close')!.addEventListener('click', () => {
     document.getElementById('monthly-report-panel')!.style.display = 'none';
@@ -2251,6 +2397,17 @@ window.__game = {
     getWorldCities: () => worldCities,
     getEngine: () => engine,
     getStore: () => engine?.['store'] ?? null,
+    /** 포팅 시스템 접근자 [76-85][213-214][321-340][341-360][421-438][431-432][441-460] */
+    getPortedSystems: () => engine ? {
+        strategicCommand: engine.strategicCommand,
+        lifeSimulator: engine.lifeSimulator,
+        metaManager: engine.metaManager,
+        legacyManager: engine.legacyManager,
+        metaDataManager: engine.metaDataManager,
+        intelligenceManager: engine.intelligenceManager,
+        narrativeManager: engine.narrativeManager,
+        climateManager: engine.climateManager,
+    } : null,
     /** E2E/테스트용: 코어 시스템 모듈 접근자 (동적 import 실패 우회) */
     systems: {
         freeOfficerVisit: () => free_officer_visit_system,

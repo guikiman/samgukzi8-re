@@ -12,6 +12,10 @@ export interface FactionFateReport {
     destroyedFactionNames: string[];
     ending: GameEnding;
     winnerFactionName: string | null;
+    /** 플레이어 세력이 이번 판정에서 멸망했는가 — [213] playerFactionId 정합성 */
+    playerFactionDestroyed?: boolean;
+    /** 멸망 시 패배 안내 메시지 */
+    playerDefeatMessage?: string;
 }
 export declare class FactionFateSystem {
     private store;
