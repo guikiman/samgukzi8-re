@@ -5,7 +5,7 @@ import { GameStore } from '../src/core/game_store.js';
 import { GameEngine } from '../src/core/game_engine.js';
 import { buildWorld } from '../src/core/scenario_system.js';
 import { convertToFactionVagrant } from '../src/core/vagrant_revival_system.js';
-import { computeVagrantStrength, processVagrantMonthlyActions, resolvePlayerRaid, RAID_COMMAND_COST } from '../src/core/vagrant_monthly_actions.js';
+import { computeVagrantStrength, processVagrantMonthlyActions, resolvePlayerRaid, RAID_COMMAND_COST, RAID_FAIL_LOYALTY_PENALTY, RAID_FAIL_FATIGUE_MONTHS } from '../src/core/vagrant_monthly_actions.js';
 import { ChinaMapRenderer } from '../src/core/china_map_renderer.js';
 import { resolveCityClimateRegion } from '../src/core/monthly_report.js';
 import scenarioIndex from '../src/data/scenarios/index.json';
@@ -149,6 +149,77 @@ describe('방랑군 재기 플레이 흐름 [83][421-440]', () => {
         expect(outcome.success).toBe(false);
         expect(outcome.message).toContain('전략 포인트');
         expect(engine.strategicCommand.getStrategyPoints()).toBe(pts); // 미소비
+    });
+
+    it('습격 실패 시 결의 훼손(충성도 -8)과 3개월 습격 금지가 적용된다 [83]', () => {
+        const { store, world } = createEngine();
+        const enemyId = world.factions.find(f => f.id !== 'fac_0')!.id;
+        for (const c of world.cities.filter(c => c.ownerId === 'fac_0')) {
+            store.updateCity(c.id, { ownerId: null });
+        }
+        convertToFactionVagrant(store, 'fac_0');
+
+        // 재야 무장 제거 — 등용 경로 차단 (영입 무장 통솔 합산으로 성공이 뒤집히는 것 방지)
+        for (const o of store.getAllOfficers().filter(o => o.factionId === null)) {
+            store.removeOfficer(o.id);
+        }
+        // 습격 시도는 가능하되 판정 실패를 확정 — 유지 무장 수에 관계없이:
+        //   판정 실패: 통솔합(50×n) + 난수(≤60) < 방어
+        //   임계 통과: 역량(50×n×20) ≥ 방어×10  ⇔  방어 ≤ 100×n
+        // → 방어 = 50n+61 이면 두 조건을 모두 만족 (n≥2)
+        const members = store.getOfficersByFaction('fac_0');
+        for (const o of members) {
+            store.updateOfficer(o.id, { stats: { ...o.stats, leadership: 50 } });
+        }
+        const leadershipSum = members.length * 50;
+        const certainFailDefense = leadershipSum + 61;
+        for (const c of store.getAllCities()) {
+            if (c.ownerId !== 'fac_0' && c.ownerId !== null) store.updateCity(c.id, { defense: certainFailDefense });
+        }
+        const loyaltyBefore = new Map(members.map(o => [o.id, o.loyalty]));
+
+        // 1개월차: 습격 시도 → 실패
+        const results1 = processVagrantMonthlyActions(store);
+        const raid1 = results1.find(r => r.factionId === 'fac_0' && r.kind === 'RAID');
+        expect(raid1?.success).toBe(false);
+        // 결의 훼손 확인
+        for (const o of store.getOfficersByFaction('fac_0')) {
+            expect(o.loyalty).toBe(Math.max(0, (loyaltyBefore.get(o.id) ?? 0) - RAID_FAIL_LOYALTY_PENALTY));
+        }
+
+        // 2~4개월차: 피로로 자율 습격 미시도 — RAID 결과 전무 (RAID_FAIL_FATIGUE_MONTHS = 3개월)
+        for (let m = 0; m < RAID_FAIL_FATIGUE_MONTHS; m++) {
+            const resultsN = processVagrantMonthlyActions(store);
+            expect(resultsN.find(r => r.factionId === 'fac_0' && r.kind === 'RAID')).toBeUndefined();
+        }
+        // 피로 만료 후 방어를 임계 이하로 낮추면 자율 습격이 재개된다
+        for (const c of store.getAllCities()) {
+            if (c.ownerId !== 'fac_0' && c.ownerId !== null) store.updateCity(c.id, { defense: 1 });
+        }
+        const results4 = processVagrantMonthlyActions(store);
+        const raid4 = results4.find(r => r.factionId === 'fac_0' && r.kind === 'RAID');
+        expect(raid4).toBeDefined();
+        expect(raid4!.success).toBe(true); // 방어 1, 통솔합 50n ≥ 1 — 확정 성공
+    });
+
+    it('월간 로그에 방랑군 동향이 수집되고 peek로 조회된다 [83]', async () => {
+        const { store, engine, world } = createEngine();
+        for (const c of world.cities.filter(c => c.ownerId === 'fac_0')) {
+            store.updateCity(c.id, { ownerId: null });
+        }
+
+        // 1턴: 턴 후반 fate 판정에서 방랑군 전환 기록
+        await engine.executeTurn();
+        let log = engine.peekMonthlyPortedLog(false);
+        expect(log.vagrant.some(v => v.kind === 'CONVERT' && v.factionName === '조조')).toBe(true);
+
+        // 2턴: 전환된 방랑군이 월간 훅에서 활동 — 등용 시도 기록 (성공/실패 무관)
+        await engine.executeTurn();
+        log = engine.peekMonthlyPortedLog(false);
+        expect(log.vagrant.some(v => v.kind === 'RECRUIT' && v.factionName === '조조')).toBe(true);
+        // peek 읽기 전용 확인
+        expect(engine.peekMonthlyPortedLog(false).vagrant.length).toBe(log.vagrant.length);
+        void store;
     });
 
     it('습격 성공 시 전리품(자금/국고 약탈)이 점령 도시에 귀속된다 [131-145]', () => {

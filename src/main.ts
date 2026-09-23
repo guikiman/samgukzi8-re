@@ -2224,6 +2224,12 @@ function renderMonthlyPortedSection(ported: import('./core/monthly_report.js').P
     for (const n of ported.collapsedNetworks) {
         rows.push(`<div class="mr-row"><span class="mr-name">🕸️ 첩보망 붕괴</span><span class="mr-val">${n.cityId} — 유지비 미납 (${n.factionId})</span></div>`);
     }
+    // 방랑군 동향 [83] — 전환/등용/습격/재기
+    for (const v of ported.vagrant ?? []) {
+        const icon = v.kind === 'CONVERT' ? '🏚️' : v.kind === 'RAID' ? '⚔️' : '🤝';
+        const label = v.kind === 'CONVERT' ? '방랑군 몰락' : v.kind === 'RAID' ? (v.success ? '습격 점령' : '습격 격퇴') : (v.success ? '재야 영입' : '영입 실패');
+        rows.push(`<div class="mr-row"><span class="mr-name">${icon} ${label}</span><span class="mr-val" style="${v.success ? '' : 'opacity:.7'}">${v.message.replace(/^\\[.*?\\]\\s*/, '')}</span></div>`);
+    }
     const weatherIcon = (w: string): string =>
         ({ SUNNY: '☀️', CLOUDY: '☁️', RAIN: '🌧️', STORM: '⛈️', SNOW: '❄️', FOG: '🌫️', HEATWAVE: '🔥' } as Record<string, string>)[w] ?? '🌤️';
     if (ported.climates.length > 0) {

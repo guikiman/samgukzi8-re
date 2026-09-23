@@ -19,6 +19,18 @@ import type { OfficerID } from './types.js';
 import { clearVagrantOnCityGain } from './vagrant_revival_system.js';
 import { processBattleSpoils } from './battle_spoils_system.js';
 
+/**
+ * 습격 실패 피로 — 세력별 잔여 금지 개월 수 [83]
+ * 실패 시 3개월간 자율 습격 불가 (모듈 상태: 엔진 프로세스 생명주기와 동일).
+ * 프로세스 내 월간 틱 전용이므로 세이브 대상 아님.
+ */
+const raidFatigue = new Map<string, number>();
+
+/** 습격 실패 결의 훼손량 — 잔존 무장 충성도 감소 */
+export const RAID_FAIL_LOYALTY_PENALTY = 8;
+/** 습격 실패 후 자율 습격 금지 개월 수 */
+export const RAID_FAIL_FATIGUE_MONTHS = 3;
+
 export interface VagrantRaidResult {
     factionId: string;
     factionName: string;
@@ -88,6 +100,12 @@ export function processVagrantMonthlyActions(store: GameStore): VagrantRaidResul
         }
 
         // ---- 2) 도시 습격 [83] ----
+        // 실패 피로 중인 세력은 이번 달 자율 습격 스킵하며 잔여 개월을 소진한다 (등용은 계속)
+        if ((raidFatigue.get(faction.id) ?? 0) > 0) {
+            raidFatigue.set(faction.id, raidFatigue.get(faction.id)! - 1);
+            continue;
+        }
+
         const strength = computeVagrantStrength(store, faction.id);
         const allCities = store.getAllCities();
         // 방랑 세력 병력이 최약 도시 방어보다 강할 때만 시도 — 무모한 습격 방지
@@ -121,12 +139,18 @@ export function processVagrantMonthlyActions(store: GameStore): VagrantRaidResul
                     message: `⚔️ 방랑군 ${faction.name}이(가) ${weakest.name}을(를) 습격해 점령했습니다!${previousOwner ? ` (기존 소유: ${previousOwner})` : ''} — 재기 성공${spoilsSummary ? ` [전리품: ${spoilsSummary}]` : ''}`,
                 });
             } else {
+                // 습격 실패 패널티 [83] — 1) 결의 훼손: 잔존 무장 충성도 -8 (최소 0)
+                for (const o of store.getOfficersByFaction(faction.id)) {
+                    store.updateOfficer(o.id, { loyalty: Math.max(0, o.loyalty - 8) });
+                }
+                // 2) 피로: 3개월간 자율 습격 불가 (재야 등용은 계속 가능)
+                raidFatigue.set(faction.id, 3);
                 results.push({
                     factionId: faction.id,
                     factionName: faction.name,
                     kind: 'RAID',
                     success: false,
-                    message: `방랑군 ${faction.name}의 ${weakest.name} 습격이 격퇴되었습니다 (도시 방어 ${weakest.defense}).`,
+                    message: `방랑군 ${faction.name}의 ${weakest.name} 습격이 격퇴되었습니다 (도시 방어 ${weakest.defense}) — 결의가 훼손되어 3개월간 재습격이 불가합니다.`,
                 });
             }
         }

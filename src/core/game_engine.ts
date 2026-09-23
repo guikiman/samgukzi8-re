@@ -97,7 +97,9 @@ export class GameEngine {
         transports: Array<{ fromCity: string; toCity: string; gold: number; food: number; soldiers: number }>;
         collapsedNetworks: Array<{ factionId: string; cityId: string }>;
         retired: Array<{ officerName: string; age: number }>;
-    } = { campaigns: [], transports: [], collapsedNetworks: [], retired: [] };
+        /** [83] 방랑군 동향 — 전환/등용/습격/재기 (월간 보고서 동향 섹션용) */
+        vagrant: Array<{ factionName: string; kind: 'CONVERT' | 'RECRUIT' | 'RAID'; success: boolean; message: string }>;
+    } = { campaigns: [], transports: [], collapsedNetworks: [], retired: [], vagrant: [] };
 
     constructor(store?: GameStore) {
         this.store = store ?? gameStore;
@@ -460,6 +462,7 @@ export class GameEngine {
             const fateReport = this.fateSystem.checkFatesWithVagrantRevival(true);
             for (const v of fateReport.vagrantConversions ?? []) {
                 console.log(`[Engine] 방랑군 전환: ${v.factionName} (직속 ${v.keptOfficers}, 이탈 ${v.releasedOfficers})`);
+                this.portedMonthlyLog.vagrant.push({ factionName: v.factionName, kind: 'CONVERT', success: true, message: v.message });
                 this.emitEvent({
                     id: `vagrant_${v.factionId}_${Date.now()}`,
                     type: 'FACTION_VAGRANT',
@@ -759,6 +762,12 @@ export class GameEngine {
         const vagrantResults = processVagrantMonthlyActions(this.store);
         for (const r of vagrantResults) {
             console.log(`[Engine] 방랑군: ${r.message}`);
+            this.portedMonthlyLog.vagrant.push({
+                factionName: r.factionName,
+                kind: r.kind === 'RAID' ? 'RAID' : 'RECRUIT',
+                success: r.success,
+                message: r.message,
+            });
             this.emitEvent({
                 id: `vagrant_action_${r.factionId}_${r.kind}_${Date.now()}`,
                 type: r.kind === 'RAID' && r.success ? 'FACTION_REVIVED' : 'VAGRANT_ACTION',
@@ -786,18 +795,21 @@ export class GameEngine {
         transports: Array<{ fromCity: string; toCity: string; gold: number; food: number; soldiers: number }>;
         collapsedNetworks: Array<{ factionId: string; cityId: string }>;
         retired: Array<{ officerName: string; age: number }>;
+        vagrant: Array<{ factionName: string; kind: 'CONVERT' | 'RECRUIT' | 'RAID'; success: boolean; message: string }>;
     } {
         const snapshot = {
             campaigns: [...this.portedMonthlyLog.campaigns],
             transports: [...this.portedMonthlyLog.transports],
             collapsedNetworks: [...this.portedMonthlyLog.collapsedNetworks],
             retired: [...this.portedMonthlyLog.retired],
+            vagrant: [...this.portedMonthlyLog.vagrant],
         };
         if (consume) {
             this.portedMonthlyLog.campaigns = [];
             this.portedMonthlyLog.transports = [];
             this.portedMonthlyLog.collapsedNetworks = [];
             this.portedMonthlyLog.retired = [];
+            this.portedMonthlyLog.vagrant = [];
         }
         return snapshot;
     }
