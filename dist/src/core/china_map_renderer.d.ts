@@ -20,6 +20,8 @@ export interface MapCityView {
     weather?: string;
     /** [321-340] 수확 보정 (0.5~1.2). 1.0 미만이면 악천후 색상 표시 */
     harvestModifier?: number;
+    /** [461-480] 색약 친화 무늬 — 영토 셀에 사선/점 패턴을 얹어 소유 세력을 색 외 요소로 구분 */
+    factionPattern?: 'none' | 'hatch' | 'dots' | 'border';
 }
 export interface ChinaMapView {
     offsetX: number;

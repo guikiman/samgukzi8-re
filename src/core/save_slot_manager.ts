@@ -16,6 +16,19 @@ export interface SaveSlotMeta {
     month: number;
     turnCount: number;
     factionName: string;
+    /** [461-480] UI 설정 스냅샷 — 접근성/색약 모드/튜토리얼 표시 상태 복원 */
+    uiSettings?: UiSettingsSnapshot;
+}
+
+/** [461-480] UI 설정 스냅샷 — 구버전 세이브 호환을 위해 선택 필드 */
+export interface UiSettingsSnapshot {
+    fontMode?: string;
+    textScale?: number;
+    screenShake?: boolean;
+    showStatNumbers?: boolean;
+    colorblindMode?: string;
+    colorPattern?: string;
+    tutorialDone?: boolean;
 }
 
 interface SlotPayload {
@@ -72,6 +85,11 @@ export class SaveSlotManager {
         } catch {
             return null;
         }
+    }
+
+    /** [461-480] 슬롯의 UI 설정 스냅샷 — 없으면 null (구버전 세이브 호환) */
+    getUiSettings(slot: SlotId): UiSettingsSnapshot | null {
+        return this.getMeta(slot)?.uiSettings ?? null;
     }
 
     /** 모든 슬롯 메타데이터 (1, 2, 3, auto 순) */

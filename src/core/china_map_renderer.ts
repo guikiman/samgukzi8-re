@@ -21,6 +21,8 @@ export interface MapCityView {
     weather?: string;
     /** [321-340] 수확 보정 (0.5~1.2). 1.0 미만이면 악천후 색상 표시 */
     harvestModifier?: number;
+    /** [461-480] 색약 친화 무늬 — 영토 셀에 사선/점 패턴을 얹어 소유 세력을 색 외 요소로 구분 */
+    factionPattern?: 'none' | 'hatch' | 'dots' | 'border';
 }
 
 export interface ChinaMapView {
@@ -106,7 +108,7 @@ export class ChinaMapRenderer {
     private seasonTint: 'spring' | 'summer' | 'autumn' | 'winter' | null = null;
 
     /** 영토 셀 (보로노이 근사 그리드) 캐시 */
-    private territoryCells: Array<{ ownerColor: string | null; isPlayer: boolean }> = [];
+    private territoryCells: Array<{ ownerColor: string | null; isPlayer: boolean; pattern: string }> = [];
     private territoryCols = 0;
     private territoryRows = 0;
     private territoryDirty = true;
@@ -120,7 +122,7 @@ export class ChinaMapRenderer {
     private territoryLayerDirty = true;
     private borderLayerDirty = true;
 
-    private static readonly CELL_SIZE = 14; // 정규화 공간 0.014 간격
+    private static readonly CELL_SIZE = 0.014; // 정규화 공간 격자 간격 (≈72×72 격자) [269]
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -151,7 +153,7 @@ export class ChinaMapRenderer {
         // 소속 있는 도시만 영토 계산에 사용
         const owned = this.cities.filter(c => c.ownerColor);
 
-        const cells: Array<{ ownerColor: string | null; isPlayer: boolean }> = new Array(cols * rows);
+        const cells: Array<{ ownerColor: string | null; isPlayer: boolean; pattern: string }> = new Array(cols * rows);
 
         for (let gy = 0; gy < rows; gy++) {
             for (let gx = 0; gx < cols; gx++) {
@@ -160,7 +162,7 @@ export class ChinaMapRenderer {
 
                 // 대륙 내부인지 검사 (짝수 교차법, 정규화 좌표)
                 if (!pointInPolygon(nx, ny, CONTINENT_OUTLINE)) {
-                    cells[gy * cols + gx] = { ownerColor: null, isPlayer: false };
+                    cells[gy * cols + gx] = { ownerColor: null, isPlayer: false, pattern: 'none' };
                     continue;
                 }
 
@@ -178,8 +180,8 @@ export class ChinaMapRenderer {
                 }
 
                 cells[gy * cols + gx] = bestCity
-                    ? { ownerColor: bestCity.ownerColor, isPlayer: bestCity.isPlayer }
-                    : { ownerColor: null, isPlayer: false };
+                    ? { ownerColor: bestCity.ownerColor, isPlayer: bestCity.isPlayer, pattern: bestCity.factionPattern ?? 'none' }
+                    : { ownerColor: null, isPlayer: false, pattern: 'none' };
             }
         }
 
@@ -206,7 +208,7 @@ export class ChinaMapRenderer {
             }
         }
         this.factionLabels = Array.from(acc.values())
-            .filter(a => a.n >= 8)  // 너무 작은 영토는 라벨 생략
+            .filter(a => a.n >= 256)  // 너무 작은 영토는 라벨 생략 (0.014 격자 기준 ≈면적 4%)
             .map(a => ({ name: a.name, color: a.color, cx: a.sumX / a.n, cy: a.sumY / a.n, cells: a.n, isPlayer: a.isPlayer }));
 
         this.territoryDirty = false;
@@ -420,6 +422,20 @@ export class ChinaMapRenderer {
                 octx.globalAlpha = cell.isPlayer ? 0.34 : 0.22;
                 octx.fillStyle = cell.ownerColor;
                 octx.fillRect(gx * cellW, gy * cellH, cellW + 0.6, cellH + 0.6);
+                // [461-480] 색약 무늬 — 셀 위에 사선/점 패턴을 얹어 세력 이중 부호화
+                if (cell.pattern === 'hatch') {
+                    octx.strokeStyle = cell.ownerColor;
+                    octx.lineWidth = 1;
+                    octx.beginPath();
+                    octx.moveTo(gx * cellW, gy * cellH + cellH);
+                    octx.lineTo(gx * cellW + cellW, gy * cellH);
+                    octx.stroke();
+                } else if (cell.pattern === 'dots') {
+                    octx.fillStyle = cell.ownerColor;
+                    octx.beginPath();
+                    octx.arc(gx * cellW + cellW / 2, gy * cellH + cellH / 2, 1.4, 0, Math.PI * 2);
+                    octx.fill();
+                }
             }
         }
         octx.globalAlpha = 1.0;
@@ -511,7 +527,7 @@ export class ChinaMapRenderer {
             if (px < -80 || px > width + 80 || py < -60 || py > height + 60) continue;
 
             // 영토 면적 기반 글자 크기 (최소 18px, 최대 64px)
-            const fontSize = Math.max(18, Math.min(64, Math.sqrt(label.cells) * 7 * this.zoom));
+            const fontSize = Math.max(18, Math.min(64, Math.sqrt(label.cells / 4096) * 448 * this.zoom));
             if (!label.name) continue;
 
             ctx.save();

@@ -231,6 +231,11 @@ export class RelationshipGraphEvaluator {
         return this.nodeStore.size;
     }
 
+    /** 전체 엣지 스냅숏 — 인맥 뷰 렌더링용 [269][33] */
+    getAllEdges(): RelationshipEdge[] {
+        return Array.from(this.edgeStore.values());
+    }
+
     edgeCount(): number {
         return this.edgeStore.size;
     }

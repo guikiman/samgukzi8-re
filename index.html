@@ -22,6 +22,7 @@
             <button id="btn-slots" class="game-btn" disabled>💾 슬롯</button>
             <button id="btn-help" class="game-btn">❓ 도움말</button>
             <button id="btn-settings" class="game-btn">⚙️ 설정</button>
+            <button id="btn-graph" class="game-btn" disabled>🕸️ 人脈</button>
             <button id="btn-diplomacy" class="game-btn" disabled>🕊️ 외교</button>
             <button id="btn-report" class="game-btn" disabled>📊 보고</button>
             <button id="btn-battle" class="game-btn" disabled>⚔️ 전투</button>
@@ -194,6 +195,20 @@
         <button id="a11y-close" class="cdp-close" title="닫기">✕</button>
     </div>
     <div id="a11y-content"></div>
+</div>
+
+<!-- 인맥 그래프 패널 [269][33] -->
+<div id="graph-panel" style="display:none;">
+    <div class="cdp-header">
+        <span class="cdp-city-name">人脈 — 관계망</span>
+        <button id="gp-close" class="cdp-close" title="닫기">✕</button>
+    </div>
+    <div class="gp-toolbar">
+        <select id="gp-center" class="gp-select"></select>
+        <span class="gp-hint">휠: 줌 · 드래그: 이동 · 노드 클릭: 중심 변경</span>
+    </div>
+    <canvas id="gp-canvas" width="440" height="380"></canvas>
+    <div id="gp-detail" class="gp-detail"></div>
 </div>
 
 <!-- 외교 패널 [341-360] -->

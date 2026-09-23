@@ -32,6 +32,7 @@ import { resolveCityClimateRegion } from './core/monthly_report.js';
 import { computeVagrantStrength } from './core/vagrant_monthly_actions.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
 import { TutorialSystem } from './core/tutorial_system.js';
+import { RelationshipGraphViewer } from './core/relationship_graph_viewer.js';
 import { loadAccessibilitySettings, saveAccessibilitySettings, accessibilityAttributes, renderAccessibilityPanel, } from './core/accessibility_system.js';
 import { convertFactionColor, factionSymbol, COLORBLIND_MODE_LABELS, PATTERN_LABELS, PATTERN_OPTIONS, } from './core/colorblind_palette.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
@@ -61,6 +62,7 @@ const btnDiplomacy = document.getElementById('btn-diplomacy');
 const btnNextMonth = document.getElementById('btn-next-month');
 const btnHelp = document.getElementById('btn-help');
 const btnSettings = document.getElementById('btn-settings');
+const btnGraph = document.getElementById('btn-graph');
 // ============================================================
 // Engine State
 // ============================================================
@@ -682,6 +684,8 @@ function syncChinaMapCities() {
                 isSelected: false,
                 weather: climate?.weather,
                 harvestModifier: climate?.harvestModifier,
+                // [461-480] 색약 무늬 — 소유 세력 패턴을 영토에 반영
+                factionPattern: colorPattern,
             };
         });
         chinaMap.setCities(worldCities);
@@ -1395,6 +1399,7 @@ async function startGame(world = null) {
     btnBattle.disabled = false;
     btnDiplomacy.disabled = false;
     btnNextMonth.disabled = false;
+    btnGraph.disabled = false;
     statusText.textContent = '게임 실행 중';
     lastFrameTime = 0;
     addLog('게임 루프 시작');
@@ -1678,11 +1683,26 @@ function saveToSlot(slot) {
         const compressed = engine.saveCompressed();
         const gs = engine['store'].getGlobalState();
         const faction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
+        // [461-480] UI 설정 스냅샷 — 접근성·색약 모드·튜토리얼 상태 동반 저장
+        let tutorialDone = false;
+        try {
+            tutorialDone = localStorage.getItem('rtk8_tutorial_done') !== null;
+        }
+        catch { /* 무시 */ }
         const ok = slotManager.save(slot, compressed, {
             year: gs.time.year,
             month: gs.time.month,
             turnCount: gs.turnCount,
             factionName: faction?.name ?? '-',
+            uiSettings: {
+                fontMode: a11ySettings.fontMode,
+                textScale: a11ySettings.textScale,
+                screenShake: a11ySettings.screenShake,
+                showStatNumbers: a11ySettings.showStatNumbers,
+                colorblindMode,
+                colorPattern,
+                tutorialDone,
+            },
         });
         addLog(ok
             ? `${slot === 'auto' ? '자동' : `슬롯 ${slot}`} 저장 완료 (${gs.time.year}년 ${gs.time.month}월)`
@@ -1706,9 +1726,35 @@ function loadFromSlot(slot) {
         addLog('불러오기 실패: 세이브 데이터가 손상되었습니다.');
         return;
     }
+    // [461-480] UI 설정 복원 — 세이브 시점의 접근성·색약 모드·튜토리얼 상태
+    restoreUiSettings(slotManager.getUiSettings(slot));
     saveSlotsPanel.style.display = 'none';
     addLog(`슬롯 ${slot === 'auto' ? '자동' : slot}에서 불러왔습니다`);
     void startGame(null);
+}
+/** 세이브에 포함된 UI 설정 복원 (구버전 세이브: null이면 무시) [461-480] */
+function restoreUiSettings(ui) {
+    if (!ui)
+        return;
+    if (ui.fontMode === 'serif' || ui.fontMode === 'sans' || ui.fontMode === 'contrast') {
+        a11ySettings = { ...a11ySettings, fontMode: ui.fontMode };
+    }
+    if (ui.textScale === 0.9 || ui.textScale === 1.0 || ui.textScale === 1.15 || ui.textScale === 1.3) {
+        a11ySettings = { ...a11ySettings, textScale: ui.textScale };
+    }
+    if (typeof ui.screenShake === 'boolean')
+        a11ySettings = { ...a11ySettings, screenShake: ui.screenShake };
+    if (typeof ui.showStatNumbers === 'boolean')
+        a11ySettings = { ...a11ySettings, showStatNumbers: ui.showStatNumbers };
+    if (ui.colorblindMode === 'none' || ui.colorblindMode === 'deuteranopia' || ui.colorblindMode === 'tritanopia') {
+        colorblindMode = ui.colorblindMode;
+    }
+    if (ui.colorPattern === 'none' || ui.colorPattern === 'hatch' || ui.colorPattern === 'dots' || ui.colorPattern === 'border') {
+        colorPattern = ui.colorPattern;
+    }
+    saveAccessibilitySettings(a11ySettings);
+    applyAccessibility();
+    applyColorblindToMap();
 }
 const SLOT_DEFS = [
     { id: 1, label: '슬롯 一' },
@@ -1894,6 +1940,90 @@ btnSettings.addEventListener('click', () => {
     }
 });
 document.getElementById('a11y-close').addEventListener('click', () => { a11yPanel.style.display = 'none'; });
+// ============================================================
+// 인맥 그래프 패널 [269][33] — 줌/팬/클릭 인터랙션 + 노드 상세
+// ============================================================
+const graphPanel = document.getElementById('graph-panel');
+const graphViewer = new RelationshipGraphViewer();
+let graphDetach = null;
+let graphCenterId = null;
+/** 스토어 관계 엣지 → 뷰어 그래프 변환 (중심 무장 기준 1홉) [33] */
+function buildStoreGraph(centerId) {
+    const officers = engine['store'].getAllOfficers();
+    const nameOf = new Map(officers.map((o) => [o.id, o.name]));
+    const facOf = new Map(officers.map((o) => [o.id, o.factionId ?? '']));
+    const allEdges = engine['store'].getState().relationships;
+    const edges = Object.values(allEdges).filter((e) => !centerId || e.source === centerId || e.target === centerId);
+    return graphViewer.buildGraph(officers.map((o) => ({ id: o.id, name: o.name, factionId: facOf.get(o.id) ?? '' })), edges, centerId ?? undefined);
+}
+function renderGraphPanel() {
+    // 중심 무장 셀렉터 (현직 무장만, 이름순)
+    const officers = engine['store'].getAllOfficers()
+        .filter((o) => o.deathYear === null)
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    const sel = document.getElementById('gp-center');
+    sel.innerHTML = '<option value="">— 전체 관계망 —</option>' +
+        officers.map((o) => `<option value="${o.id}"${o.id === graphCenterId ? ' selected' : ''}>${o.name}</option>`).join('');
+    const graph = buildStoreGraph(graphCenterId);
+    const canvas = document.getElementById('gp-canvas');
+    graphViewer.attachCanvas(canvas);
+    const layout = graphViewer.layoutGraph(graph, canvas.width, canvas.height);
+    graphViewer.render(layout);
+    if (!graphDetach) {
+        graphDetach = graphViewer.attachInteraction(canvas, () => {
+            const g = buildStoreGraph(graphCenterId);
+            return graphViewer.layoutGraph(g, canvas.width, canvas.height);
+        }, (nodeId) => {
+            if (nodeId) {
+                graphCenterId = nodeId;
+                document.getElementById('gp-center').value = nodeId;
+                renderGraphPanel();
+            }
+        });
+    }
+    renderGraphDetail();
+}
+function renderGraphDetail() {
+    const detail = document.getElementById('gp-detail');
+    if (!graphCenterId) {
+        detail.innerHTML = '<span class="gp-hint">노드를 클릭하면 해당 무장을 중심으로 다시 배치합니다</span>';
+        return;
+    }
+    const officers = engine['store'].getAllOfficers();
+    const center = officers.find((o) => o.id === graphCenterId);
+    const rels = Object.values(engine['store'].getState().relationships)
+        .filter((e) => e.source === graphCenterId || e.target === graphCenterId);
+    const nameOf = new Map(officers.map((o) => [o.id, o.name]));
+    const typeLabel = {
+        FRIEND: '우호', RIVAL: '경쟁', SWORN_BROTHER: '의형제',
+        NEMESIS: '숙명', FAMILY: '친족', SPOUSE: '배우자', SUBORDINATE: '주종',
+    };
+    const rows = rels
+        .sort((a, b) => b.affinity - a.affinity)
+        .slice(0, 12)
+        .map((e) => {
+        const other = e.source === graphCenterId ? e.target : e.source;
+        const label = typeLabel[e.type] ?? e.type;
+        return `<div class="gp-rel-row"><span class="gp-rel-name">${nameOf.get(other) ?? other}</span>` +
+            `<span class="gp-rel-type">${label}</span>` +
+            `<span class="gp-rel-aff" data-aff="${e.affinity}">${e.affinity >= 0 ? '+' : ''}${e.affinity}</span></div>`;
+    }).join('');
+    detail.innerHTML = `<div class="gp-rel-title">${center?.name ?? graphCenterId}의 인맥 (${rels.length})</div>${rows || '<span class="gp-hint">기록된 관계가 없습니다</span>'}`;
+}
+btnGraph.addEventListener('click', () => {
+    if (!graphPanel.style.display || graphPanel.style.display === 'none') {
+        renderGraphPanel();
+        graphPanel.style.display = 'block';
+    }
+    else {
+        graphPanel.style.display = 'none';
+    }
+});
+document.getElementById('gp-close').addEventListener('click', () => { graphPanel.style.display = 'none'; });
+document.getElementById('gp-center').addEventListener('change', (e) => {
+    graphCenterId = e.target.value || null;
+    renderGraphPanel();
+});
 /** 색약 모드 변경 시 지도 소유 색을 즉시 재동기화 [461-480] */
 function applyColorblindToMap() {
     try {

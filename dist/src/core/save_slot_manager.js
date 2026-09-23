@@ -57,6 +57,10 @@ export class SaveSlotManager {
             return null;
         }
     }
+    /** [461-480] 슬롯의 UI 설정 스냅샷 — 없으면 null (구버전 세이브 호환) */
+    getUiSettings(slot) {
+        return this.getMeta(slot)?.uiSettings ?? null;
+    }
     /** 모든 슬롯 메타데이터 (1, 2, 3, auto 순) */
     getAllMetas() {
         const slots = [1, 2, 3, 'auto'];

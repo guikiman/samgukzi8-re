@@ -893,6 +893,53 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .cb-pattern-dots { background-image: radial-gradient(currentColor 1.5px, transparent 1.5px); background-size: 6px 6px; }
 .cb-pattern-border { outline: 2px solid currentColor; outline-offset: 1px; }
 
+/* ---------- 인맥 그래프 패널 [269][33] ---------- */
+#graph-panel {
+    position: absolute;
+    top: 90px;
+    right: 16px;
+    width: 470px;
+    max-width: calc(100vw - 32px);
+    background: var(--panel-bg, rgba(20, 16, 12, 0.96));
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    padding: 14px;
+    z-index: 400;
+}
+.gp-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gp-select {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--text-main, #e8dcc8);
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 11px;
+}
+.gp-hint { font-size: 9px; color: var(--text-faint, #9a8a6a); }
+#gp-canvas {
+    width: 100%;
+    background: #f5f0e8;
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 4px;
+    cursor: grab;
+}
+#gp-canvas:active { cursor: grabbing; }
+.gp-detail { margin-top: 8px; max-height: 180px; overflow-y: auto; }
+.gp-rel-title { font-size: 11px; color: var(--gold-bright); margin-bottom: 4px; }
+.gp-rel-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    padding: 2px 0;
+    border-bottom: 1px dashed rgba(212, 175, 55, 0.12);
+}
+.gp-rel-name { color: var(--text-main, #e8dcc8); flex: 1; }
+.gp-rel-type { color: var(--text-faint, #9a8a6a); }
+.gp-rel-aff[data-aff^="-"] { color: #e07a6a; }
+.gp-rel-aff { color: #7bc47f; }
+
 /* ---------- 외교 패널 [341-360] ---------- */
 #diplomacy-panel {
     position: absolute;

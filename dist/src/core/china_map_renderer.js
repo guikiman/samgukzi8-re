@@ -117,7 +117,7 @@ export class ChinaMapRenderer {
                 const ny = (gy + 0.5) * ChinaMapRenderer.CELL_SIZE;
                 // 대륙 내부인지 검사 (짝수 교차법, 정규화 좌표)
                 if (!pointInPolygon(nx, ny, CONTINENT_OUTLINE)) {
-                    cells[gy * cols + gx] = { ownerColor: null, isPlayer: false };
+                    cells[gy * cols + gx] = { ownerColor: null, isPlayer: false, pattern: 'none' };
                     continue;
                 }
                 // 가장 가까운 소속 도시 탐색 (제곱거리 비교)
@@ -133,8 +133,8 @@ export class ChinaMapRenderer {
                     }
                 }
                 cells[gy * cols + gx] = bestCity
-                    ? { ownerColor: bestCity.ownerColor, isPlayer: bestCity.isPlayer }
-                    : { ownerColor: null, isPlayer: false };
+                    ? { ownerColor: bestCity.ownerColor, isPlayer: bestCity.isPlayer, pattern: bestCity.factionPattern ?? 'none' }
+                    : { ownerColor: null, isPlayer: false, pattern: 'none' };
             }
         }
         this.territoryCells = cells;
@@ -161,7 +161,7 @@ export class ChinaMapRenderer {
             }
         }
         this.factionLabels = Array.from(acc.values())
-            .filter(a => a.n >= 8) // 너무 작은 영토는 라벨 생략
+            .filter(a => a.n >= 256) // 너무 작은 영토는 라벨 생략 (0.014 격자 기준 ≈면적 4%)
             .map(a => ({ name: a.name, color: a.color, cx: a.sumX / a.n, cy: a.sumY / a.n, cells: a.n, isPlayer: a.isPlayer }));
         this.territoryDirty = false;
         this.territoryLayerDirty = true;
@@ -354,6 +354,21 @@ export class ChinaMapRenderer {
                 octx.globalAlpha = cell.isPlayer ? 0.34 : 0.22;
                 octx.fillStyle = cell.ownerColor;
                 octx.fillRect(gx * cellW, gy * cellH, cellW + 0.6, cellH + 0.6);
+                // [461-480] 색약 무늬 — 셀 위에 사선/점 패턴을 얹어 세력 이중 부호화
+                if (cell.pattern === 'hatch') {
+                    octx.strokeStyle = cell.ownerColor;
+                    octx.lineWidth = 1;
+                    octx.beginPath();
+                    octx.moveTo(gx * cellW, gy * cellH + cellH);
+                    octx.lineTo(gx * cellW + cellW, gy * cellH);
+                    octx.stroke();
+                }
+                else if (cell.pattern === 'dots') {
+                    octx.fillStyle = cell.ownerColor;
+                    octx.beginPath();
+                    octx.arc(gx * cellW + cellW / 2, gy * cellH + cellH / 2, 1.4, 0, Math.PI * 2);
+                    octx.fill();
+                }
             }
         }
         octx.globalAlpha = 1.0;
@@ -437,7 +452,7 @@ export class ChinaMapRenderer {
             if (px < -80 || px > width + 80 || py < -60 || py > height + 60)
                 continue;
             // 영토 면적 기반 글자 크기 (최소 18px, 최대 64px)
-            const fontSize = Math.max(18, Math.min(64, Math.sqrt(label.cells) * 7 * this.zoom));
+            const fontSize = Math.max(18, Math.min(64, Math.sqrt(label.cells / 4096) * 448 * this.zoom));
             if (!label.name)
                 continue;
             ctx.save();
@@ -624,5 +639,5 @@ export class ChinaMapRenderer {
         return { offsetX: this.offsetX, offsetY: this.offsetY, zoom: this.zoom };
     }
 }
-ChinaMapRenderer.CELL_SIZE = 14; // 정규화 공간 0.014 간격
+ChinaMapRenderer.CELL_SIZE = 0.014; // 정규화 공간 격자 간격 (≈72×72 격자) [269]
 //# sourceMappingURL=china_map_renderer.js.map

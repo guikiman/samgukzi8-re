@@ -53,6 +53,8 @@ export declare class RelationshipGraphEvaluator {
     shortestPath(from: OfficerID, to: OfficerID): OfficerID[] | null;
     getAllOfficerIds(): OfficerID[];
     nodeCount(): number;
+    /** 전체 엣지 스냅숏 — 인맥 뷰 렌더링용 [269][33] */
+    getAllEdges(): RelationshipEdge[];
     edgeCount(): number;
     reset(): void;
 }
