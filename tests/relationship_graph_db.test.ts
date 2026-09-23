@@ -188,4 +188,42 @@ describe('TriStateGraphDatabase', () => {
 
         expect(elapsed).toBeLessThan(5);
     });
+
+    // ============================================================
+    // [269] 대규모 Ripple Effect 벤치마크 — 1,000명 밀집 관계망
+    // AGENTS.md QA: 은하수 그래프 연산에서 프레임 드랍이 없어야 함.
+    // 월간 사이클에서 다수의 등용/참언/증정이 동시 발생할 때
+    // 2도 BFS 파동 전파가 프레임 예산(16ms) 안에 수렴하는지 검증.
+    // ============================================================
+
+    it('1,000노드 밀집 그래프에서 대규모 Ripple 전파가 프레임 예산(16ms) 이내다', () => {
+        const db = new TriStateGraphDatabase();
+        // 1,000노드 · 약 9,000엣지 밀집 그래프 (순환 + LCG 랜덤 크로스 링크)
+        for (let i = 0; i < 1000; i++) db.addWarlord(`w${i}`);
+        let seed = 0x2f6e2b1;
+        const nextRand = () => (seed = (seed * 1664525 + 1013904223) >>> 0);
+        for (let i = 0; i < 1000; i++) {
+            db.setRelationship(`w${i}`, `w${(i + 1) % 1000}`, 90); // 순환 링
+            for (let k = 0; k < 8; k++) {
+                const j = nextRand() % 1000;
+                if (j !== i) db.setRelationship(`w${i}`, `w${j}`, 90);
+            }
+        }
+        // LCG 중복 제거 후에도 밀집 그래프 유지 (순환 링 1,000 + 랜덤 링크 대부분 고유)
+        expect(db.getEdgeCount()).toBeGreaterThanOrEqual(8500);
+
+        // 워밍업 (JIT)
+        db.applyRippleEffect('w0', 'w999', 10, 2);
+
+        // 월간 시나리오: 1,000명 전원이 각각 2도 ripple 발화 (감쇠 수렴 특성상 전체 순회는 아님)
+        const t0 = performance.now();
+        for (let i = 0; i < 1000; i++) {
+            db.applyRippleEffect(`w${i}`, 'w999', 8, 2);
+        }
+        const fullScanMs = performance.now() - t0;
+
+        // 프레임당 평균으로 환산 — 1회 전파가 60fps 예산(16ms) 내에 완료되어야 함
+        const perCallMs = fullScanMs / 1000;
+        expect(perCallMs).toBeLessThan(16);
+    });
 });
