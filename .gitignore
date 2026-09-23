@@ -1,0 +1,17 @@
+# 의존성 — 설치 산물은 추적하지 않음 (이미 추적된 파일엔 영향 없음)
+node_modules/
+
+# 로컬 실행 로그
+logs/
+*.log
+
+# 로컬 도구 상태
+.freebuff/
+.omo/
+
+# 테스트 임시 출력
+test_output.txt
+
+# OS 노이즈
+Thumbs.db
+.DS_Store
