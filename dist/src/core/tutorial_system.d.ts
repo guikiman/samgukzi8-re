@@ -14,6 +14,10 @@ export interface TutorialStep {
     readonly body: string;
     /** 하이라이트할 UI 요소 힌트 (도구바 버튼 id 등) — 표시용 텍스트 */
     readonly targetHint?: string;
+    /** 스포트라이트 대상 DOM 셀렉터 (id 등) — 존재하지 않으면 하이라이트 생략 */
+    readonly spotlightSelector?: string;
+    /** 대상 요소를 못 찾을 때 사용자에게 보여줄 위치 설명 */
+    readonly spotlightFallback?: string;
 }
 export interface TutorialRenderResult {
     /** 패널 본문 HTML (제목 + 설명 + 단계 표시) */
@@ -34,6 +38,10 @@ export declare class TutorialSystem {
     start(): void;
     next(): void;
     prev(): void;
+    /** 현재 단계의 스포트라이트 대상 셀렉터 (없으면 null) */
+    currentSpotlightSelector(): string | null;
+    /** 스포트라이트 대상을 못 찾았을 때 표시할 위치 설명 */
+    currentSpotlightFallback(): string | null;
     /** 현재 단계의 렌더 결과 — DOM 조작 없이 순수 계산 */
     renderStep(): TutorialRenderResult;
     /** 완료/건너뛰기 — localStorage에 기록 [17] */

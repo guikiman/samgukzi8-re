@@ -15,6 +15,10 @@ export interface TutorialStep {
     readonly body: string;
     /** 하이라이트할 UI 요소 힌트 (도구바 버튼 id 등) — 표시용 텍스트 */
     readonly targetHint?: string;
+    /** 스포트라이트 대상 DOM 셀렉터 (id 등) — 존재하지 않으면 하이라이트 생략 */
+    readonly spotlightSelector?: string;
+    /** 대상 요소를 못 찾을 때 사용자에게 보여줄 위치 설명 */
+    readonly spotlightFallback?: string;
 }
 
 export interface TutorialRenderResult {
@@ -39,12 +43,16 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
         title: ' 턴 진행 — 다음 月',
         body: '「▸ 다음 月」 버튼으로 한 달씩 진행합니다. 평정 페이즈에서 명령을 내린 뒤 진행하면 무장들의 행동 결과가 월간 보고로 전달됩니다.',
         targetHint: 'btn-next-month',
+        spotlightSelector: '#btn-next-month',
+        spotlightFallback: '화면 상단 도구바의 「▸ 다음 月」 버튼',
     },
     {
         id: 'report',
         title: ' 월간 보고 — 月報',
         body: '「📊 보고」에서 재정·도시 현황·타세력 동향·기후와 은퇴 등 월간 요약을 확인합니다. 악천후(❄️ 등)가 걸린 도시는 수확이 감소하니 주의하세요.',
         targetHint: 'btn-report',
+        spotlightSelector: '#btn-report',
+        spotlightFallback: '화면 상단 도구바의 「📊 보고」 버튼',
     },
     {
         id: 'city',
@@ -57,12 +65,16 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
         title: ' 외교 — 外交',
         body: '「🕊️ 외교」에서 타세력과 관계를 확인하고 증정·동맹을 제안할 수 있습니다. 주변 세력과의 관계가 전쟁 리스크를 좌우합니다.',
         targetHint: 'btn-diplomacy',
+        spotlightSelector: '#btn-diplomacy',
+        spotlightFallback: '화면 상단 도구바의 「🕊️ 외교」 버튼',
     },
     {
         id: 'battle',
         title: ' 전투 — 出陣',
         body: '「⚔️ 전투」에서 출진을 준비합니다. 헥사곤 전장에서 병종 상성과 지형을 고려해 지휘하세요. 승리하면 도시를 점령합니다.',
         targetHint: 'btn-battle',
+        spotlightSelector: '#btn-battle',
+        spotlightFallback: '화면 상단 도구바의 「⚔️ 전투」 버튼',
     },
     {
         id: 'vagrant',
@@ -106,6 +118,16 @@ export class TutorialSystem {
 
     prev(): void {
         if (this.index > 0) this.index--;
+    }
+
+    /** 현재 단계의 스포트라이트 대상 셀렉터 (없으면 null) */
+    currentSpotlightSelector(): string | null {
+        return TUTORIAL_STEPS[this.index].spotlightSelector ?? null;
+    }
+
+    /** 스포트라이트 대상을 못 찾았을 때 표시할 위치 설명 */
+    currentSpotlightFallback(): string | null {
+        return TUTORIAL_STEPS[this.index].spotlightFallback ?? null;
     }
 
     /** 현재 단계의 렌더 결과 — DOM 조작 없이 순수 계산 */

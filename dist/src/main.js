@@ -33,6 +33,7 @@ import { computeVagrantStrength } from './core/vagrant_monthly_actions.js';
 import { DIFFICULTY_MULTIPLIERS } from './core/difficulty_balance_system.js';
 import { TutorialSystem } from './core/tutorial_system.js';
 import { loadAccessibilitySettings, saveAccessibilitySettings, accessibilityAttributes, renderAccessibilityPanel, } from './core/accessibility_system.js';
+import { convertFactionColor, factionSymbol, COLORBLIND_MODE_LABELS, PATTERN_LABELS, PATTERN_OPTIONS, } from './core/colorblind_palette.js';
 import { computeSettlement, diffSettlement } from './core/settlement_summary_system.js';
 // 연대기 인스턴스는 engine 초기화 이후 참조 (hoisting 회피용 래퍼)
 const engineRef = { current: null };
@@ -674,7 +675,7 @@ function syncChinaMapCities() {
                 id: c.id,
                 name: c.name,
                 x, y,
-                ownerColor: fac?.color ?? '#888898',
+                ownerColor: factionColor(fac?.color),
                 factionName: fac?.name,
                 isPlayer: c.ownerId === gs.playerFactionId,
                 garrison: c.development * 100,
@@ -854,7 +855,11 @@ function renderCityDetailPanel(city, faction, switched) {
         cdpFactionBadge.innerHTML = `${faction.name} <span class="rep-badge" style="color:${repVis.color}" title="${repVis.title}">${repVis.icon} ${repVis.label}</span>`;
         cdpFactionBadge.innerHTML = `${faction.name} <span class="rep-badge" style="color:${repVis.color}" title="${repVis.title}">${repVis.icon} ${repVis.label}</span>`;
         cdpFactionBadge.style.display = 'inline-block';
-        cdpFactionBadge.style.setProperty('--faction-color', faction.color);
+        cdpFactionBadge.style.setProperty('--faction-color', factionColor(faction.color));
+        // 색약 모드 이중 부호화 — 세력 기호를 배지에 병기 [461-480]
+        const cbSym = factionSymbol(faction.color, colorblindMode);
+        if (cbSym)
+            cdpFactionBadge.innerHTML += `<span class="cb-symbol">${cbSym}</span>`;
     }
     else {
         cdpFactionBadge.textContent = '무주공산';
@@ -1025,7 +1030,7 @@ function renderExpeditionSection(city, isPlayerCity) {
     info.textContent = `병력 ${city.development.toLocaleString()}으로 출진합니다 — 대상 도시를 선택하세요`;
     targets.innerHTML = adjacentEnemies.map(t => {
         const tf = t.ownerId ? store.getFaction(t.ownerId) : null;
-        return `<button class="cdp-expedition-btn" data-target="${t.id}" style="--faction-color:${tf?.color ?? '#888'}">
+        return `<button class="cdp-expedition-btn" data-target="${t.id}" style="--faction-color:${factionColor(tf?.color)}">
             <span class="exp-target-name">${t.name}</span>
             <span class="exp-target-info">${tf?.name ?? '무주'} · 병력 ${t.development} · 방어 ${t.defense}</span>
         </button>`;
@@ -1761,6 +1766,37 @@ function renderTutorialStep() {
     document.getElementById('tut-next').style.display = r.isLast ? 'none' : '';
     document.getElementById('tut-skip').style.display = r.isLast ? 'none' : '';
     document.getElementById('tut-finish').style.display = r.isLast ? '' : 'none';
+    applyTutorialSpotlight();
+}
+// 스포트라이트 대상 추적 — 단계 이동/종료 시 정리
+let tutSpotlightEl = null;
+function applyTutorialSpotlight() {
+    if (tutSpotlightEl) {
+        tutSpotlightEl.classList.remove('tut-spotlight');
+        tutSpotlightEl = null;
+    }
+    const sel = tutorial.currentSpotlightSelector();
+    const el = sel ? document.querySelector(sel) : null;
+    if (el) {
+        el.classList.add('tut-spotlight');
+        tutSpotlightEl = el;
+        try {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        catch { /* 구형 브라우저 무시 */ }
+    }
+    // 대상을 못 찾으면 위치 설명으로 대체 안내 [461-480]
+    const note = document.getElementById('tut-spotlight-note');
+    if (note) {
+        const fb = tutorial.currentSpotlightFallback();
+        note.textContent = !el && fb ? `▸ ${fb}을(를) 찾아보세요` : '';
+    }
+}
+function clearTutorialSpotlight() {
+    if (tutSpotlightEl) {
+        tutSpotlightEl.classList.remove('tut-spotlight');
+        tutSpotlightEl = null;
+    }
 }
 function openTutorial(auto = false) {
     tutorial.start();
@@ -1771,6 +1807,7 @@ function openTutorial(auto = false) {
 }
 function closeTutorial(markDone) {
     tutorialPanel.style.display = 'none';
+    clearTutorialSpotlight();
     if (markDone)
         tutorial.complete();
 }
@@ -1791,16 +1828,34 @@ document.getElementById('tut-close').addEventListener('click', () => closeTutori
 // ============================================================
 // 접근성 설정 패널 [461-480] — 글꼴 전환·글자 크기·화면 흔들림
 // ============================================================
+// 접근성 설정 패널 [461-480] 상태 — 색약 친화 팔레트 포함
 const a11yPanel = document.getElementById('a11y-panel');
 let a11ySettings = loadAccessibilitySettings();
+let colorblindMode = 'none';
+let colorPattern = 'none';
 function applyAccessibility() {
     for (const [k, v] of Object.entries(accessibilityAttributes(a11ySettings))) {
         document.body.setAttribute(k, v);
     }
 }
+/** 세력 색 일괄 변환기 — 지도/배지/패널 공용 [461-480] */
+function factionColor(hex) {
+    return convertFactionColor(hex ?? '#888898', colorblindMode);
+}
 function renderA11yPanel() {
     const content = document.getElementById('a11y-content');
-    content.innerHTML = renderAccessibilityPanel(a11ySettings);
+    // 색약 친화 팔레트 섹션 [461-480] — 모드/패턴 선택 버튼 동적 생성
+    const cbRow = `<div class="a11y-row"><span class="a11y-label">세력 색</span><span class="a11y-opts">` +
+        Object.keys(COLORBLIND_MODE_LABELS)
+            .map((m) => `<button class="a11y-option${m === colorblindMode ? ' active' : ''}" data-cb="${m}">${COLORBLIND_MODE_LABELS[m]}</button>`)
+            .join('') +
+        `</span></div>` +
+        `<div class="a11y-row"><span class="a11y-label">세력 무늬</span><span class="a11y-opts">` +
+        PATTERN_OPTIONS
+            .map((p) => `<button class="a11y-option${p === colorPattern ? ' active' : ''}" data-pattern="${p}">${PATTERN_LABELS[p]}</button>`)
+            .join('') +
+        `</span></div>`;
+    content.innerHTML = renderAccessibilityPanel(a11ySettings).replace('<div class="ss-hint">', cbRow + '<div class="ss-hint">');
     content.querySelectorAll('.a11y-option').forEach((btn) => {
         btn.addEventListener('click', () => {
             const el = btn;
@@ -1808,6 +1863,8 @@ function renderA11yPanel() {
             const scale = el.dataset['scale'];
             const shake = el.dataset['shake'];
             const stat = el.dataset['stat'];
+            const cb = el.dataset['cb'];
+            const pat = el.dataset['pattern'];
             if (font)
                 a11ySettings = { ...a11ySettings, fontMode: font };
             else if (scale)
@@ -1816,8 +1873,13 @@ function renderA11yPanel() {
                 a11ySettings = { ...a11ySettings, screenShake: shake === 'on' };
             else if (stat)
                 a11ySettings = { ...a11ySettings, showStatNumbers: stat === 'on' };
+            else if (cb)
+                colorblindMode = cb;
+            else if (pat)
+                colorPattern = pat;
             saveAccessibilitySettings(a11ySettings);
             applyAccessibility();
+            applyColorblindToMap();
             renderA11yPanel();
         });
     });
@@ -1832,6 +1894,15 @@ btnSettings.addEventListener('click', () => {
     }
 });
 document.getElementById('a11y-close').addEventListener('click', () => { a11yPanel.style.display = 'none'; });
+/** 색약 모드 변경 시 지도 소유 색을 즉시 재동기화 [461-480] */
+function applyColorblindToMap() {
+    try {
+        syncChinaMapCities();
+    }
+    catch {
+        // 게임 미시작 상태에서는 지도가 비어 있음 — 무시
+    }
+}
 // 저장된 설정 복원 (페이지 로드 시 1회)
 applyAccessibility();
 // ============================================================
@@ -1867,7 +1938,7 @@ function renderDiplomacyPanel() {
         const canBreak = rel === FactionRelation.ALLIANCE;
         const canGift = rel !== FactionRelation.WAR;
         const canDeclare = rel !== FactionRelation.WAR;
-        return `<div class="dp-faction-row" style="--faction-color:${f.color}">
+        return `<div class="dp-faction-row" style="--faction-color:${factionColor(f.color)}">
             <div class="dp-faction-head">
                 <span class="dp-faction-name">${f.name}</span>
                 <span class="dp-relation-tag ${relInfo.cls}">${relInfo.label}</span>
@@ -2368,7 +2439,7 @@ scenarioList.addEventListener('click', (e) => {
 function renderFactionList(s) {
     document.getElementById('faction-screen-sub').textContent =
         `${s.title_kr} — ${s.start_date.replace('-', '년 ')}월 · 세력을 선택하세요`;
-    factionList.innerHTML = s.factions.map((f, i) => `<button class="faction-card" data-idx="${i}" style="--faction-color:${f.color}">
+    factionList.innerHTML = s.factions.map((f, i) => `<button class="faction-card" data-idx="${i}" style="--faction-color:${factionColor(f.color)}">
             <span class="faction-name">${f.name}</span>
             <span class="faction-leader">군주: ${getKnownOfficerName(f.leader_id)}</span>
             <span class="faction-cap">수도: ${f.capital}</span>

@@ -71,4 +71,27 @@ describe('[461-480] TutorialSystem', () => {
         t.reset();
         expect(t.shouldShowOnStart()).toBe(true);
     });
+
+    it('스포트라이트 셀렉터는 단계별로 노출되고 welcome 단계에는 없다', () => {
+        const t = new TutorialSystem();
+        t.start();
+        expect(t.currentSpotlightSelector()).toBeNull(); // welcome — 도구바 비활성 상태
+        t.next();
+        expect(t.currentSpotlightSelector()).toBe('#btn-next-month');
+        t.next();
+        expect(t.currentSpotlightSelector()).toBe('#btn-report');
+    });
+
+    it('스포트라이트 대상을 못 찾을 때의 폴백 설명을 제공한다', () => {
+        const t = new TutorialSystem();
+        t.start();
+        t.next(); // turn 단계
+        expect(t.currentSpotlightFallback()).toContain('도구바');
+    });
+
+    it('스포트라이트 없는 단계는 폴백도 null이다', () => {
+        const t = new TutorialSystem();
+        t.start();
+        expect(t.currentSpotlightFallback()).toBeNull(); // welcome
+    });
 });

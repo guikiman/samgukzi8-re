@@ -822,6 +822,21 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .tut-controls .game-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
 .tut-skip { opacity: 0.75; }
 
+/* 튜토리얼 스포트라이트 [461-480] — 대상 UI 요소 강조 */
+.tut-spotlight {
+    position: relative;
+    z-index: 401;
+    outline: 3px solid var(--gold-bright);
+    outline-offset: 3px;
+    border-radius: 4px;
+    animation: tut-pulse 1.4s ease-in-out infinite;
+    box-shadow: 0 0 18px rgba(212, 175, 55, 0.55);
+}
+@keyframes tut-pulse {
+    0%, 100% { outline-offset: 3px; box-shadow: 0 0 12px rgba(212, 175, 55, 0.45); }
+    50% { outline-offset: 6px; box-shadow: 0 0 22px rgba(212, 175, 55, 0.7); }
+}
+
 /* ---------- 접근성 설정 패널 [461-480] ---------- */
 #a11y-panel {
     position: absolute;
@@ -861,6 +876,22 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
     color: var(--gold-bright);
     font-weight: bold;
 }
+
+/* 색약 친화 이중 부호화 [461-480] */
+.cb-symbol {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 3px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #fff8ec;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 2px;
+    vertical-align: 1px;
+}
+.cb-pattern-hatch { background-image: repeating-linear-gradient(45deg, transparent 0 3px, currentColor 3px 6px); }
+.cb-pattern-dots { background-image: radial-gradient(currentColor 1.5px, transparent 1.5px); background-size: 6px 6px; }
+.cb-pattern-border { outline: 2px solid currentColor; outline-offset: 1px; }
 
 /* ---------- 외교 패널 [341-360] ---------- */
 #diplomacy-panel {

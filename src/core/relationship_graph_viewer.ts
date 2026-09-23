@@ -143,6 +143,7 @@ export class RelationshipGraphViewer {
     const ctx = this.ctx;
     const canvas = this.canvas;
 
+    this.currentGraph = graph; // 인터랙션 후 재렌더용 추적 [269]
     this.rebuildNodeIndex(graph.nodes);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -201,6 +202,125 @@ export class RelationshipGraphViewer {
 
   setViewport(v: Partial<Viewport>): void {
     this.viewport = { ...this.viewport, ...v };
+  }
+
+  // ============================================================
+  // 마우스 인터랙션 [269] — 휠 줌 · 드래그 팬 · 노드 클릭
+  // ============================================================
+
+  /** 클릭 콜백 — 노드 히트 시 노드 id, 배경 클릭 시 null */
+  private onNodeClick: ((nodeId: string | null) => void) | null = null;
+  private dragging = false;
+  private dragMoved = false;
+  private lastMouse: { x: number; y: number } | null = null;
+  private currentGraph: GraphLayout | null = null;
+
+  /**
+   * 캔버스에 마우스/휠 이벤트를 바인딩한다.
+   * 반환값은 정리(detach) 함수 — 패널 닫힘 시 호출.
+   */
+  attachInteraction(
+    canvas: HTMLCanvasElement,
+    getGraph: () => GraphLayout | null,
+    onNodeClick?: (nodeId: string | null) => void,
+  ): () => void {
+    this.onNodeClick = onNodeClick ?? null;
+
+    const toCanvas = (e: MouseEvent): { x: number; y: number } => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    /** 화면 좌표 → 그래프 월드 좌표 (뷰포트 역변환) */
+    const screenToWorld = (sx: number, sy: number): { x: number; y: number } => ({
+      x: (sx - this.viewport.x) / this.viewport.zoom,
+      y: (sy - this.viewport.y) / this.viewport.zoom,
+    });
+
+    const hitTest = (sx: number, sy: number): string | null => {
+      const graph = getGraph();
+      if (!graph) return null;
+      const w = screenToWorld(sx, sy);
+      // 화면 반경 10px를 월드 좌표로 환산한 히트 반경
+      const r = 10 / this.viewport.zoom;
+      for (let i = graph.nodes.length - 1; i >= 0; i--) {
+        const n = graph.nodes[i];
+        const dx = w.x - n.x;
+        const dy = w.y - n.y;
+        if (dx * dx + dy * dy <= Math.max(n.radius, r) ** 2) return n.id;
+      }
+      return null;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const graph = getGraph();
+      if (!graph) return;
+      const m = toCanvas(e);
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const newZoom = Math.min(8, Math.max(0.2, this.viewport.zoom * factor));
+      const applied = newZoom / this.viewport.zoom;
+      // 마우스 지점을 기준으로 줌 — 컨텐츠가 커서 아래 고정
+      this.viewport.x = m.x - (m.x - this.viewport.x) * applied;
+      this.viewport.y = m.y - (m.y - this.viewport.y) * applied;
+      this.viewport.zoom = newZoom;
+      if (this.currentGraph) this.render(this.currentGraph);
+    };
+
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      this.dragging = true;
+      this.dragMoved = false;
+      this.lastMouse = toCanvas(e);
+    };
+
+    const onMove = (e: MouseEvent) => {
+      if (!this.dragging || this.lastMouse === null) return;
+      const m = toCanvas(e);
+      const dx = m.x - this.lastMouse.x;
+      const dy = m.y - this.lastMouse.y;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) this.dragMoved = true;
+      this.viewport.x += dx;
+      this.viewport.y += dy;
+      this.lastMouse = m;
+      if (this.currentGraph) this.render(this.currentGraph);
+    };
+
+    const onUp = (e: MouseEvent) => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      this.lastMouse = null;
+      if (!this.dragMoved && this.onNodeClick) {
+        const m = toCanvas(e);
+        this.onNodeClick(hitTest(m.x, m.y));
+      }
+    };
+
+    const onLeave = () => {
+      this.dragging = false;
+      this.lastMouse = null;
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', onUp);
+    canvas.addEventListener('mouseleave', onLeave);
+
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('mousedown', onDown);
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('mouseleave', onLeave);
+      this.onNodeClick = null;
+      this.currentGraph = null;
+    };
+  }
+
+  /** render가 마지막으로 그린 그래프를 기록 — 인터랙션 후 재렌더용 */
+  trackGraph(graph: GraphLayout): void {
+    this.currentGraph = graph;
   }
 
   exportSVG(graph: GraphLayout, width = 800, height = 600): string {
