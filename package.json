@@ -1,1 +1,21 @@
-{"name":"samgukzi8-re","version":"1.0.0","type":"module","scripts":{"build": "tsc && node scripts/generate_sw_precache.mjs","dev":"tsc --watch","check":"tsc --noEmit","test":"vitest run","test:e2e": "npm run build && node tests/e2e/browser_smoke.mjs && node tests/e2e/sw_offline.mjs"},"devDependencies":{"@types/three":"^0.185.1","jsdom":"^30.1.1","typescript":"^5.4.0","vitest":"^4.1.10"},"dependencies":{"three":"^0.170.0"}}
+{
+  "name": "samgukzi8-re",
+  "version": "1.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node scripts/generate_sw_precache.mjs",
+    "dev": "tsc --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "npm run build && node tests/e2e/browser_smoke.mjs && node tests/e2e/sw_offline.mjs"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.1",
+    "jsdom": "^30.1.1",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  }
+}
