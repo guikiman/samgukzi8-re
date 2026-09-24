@@ -16,6 +16,10 @@ import { assembleReinforcements } from './core/reinforcement_system.js';
 import { SaveSlotManager } from './core/save_slot_manager.js';
 import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
+// [312] 전투 리플레이 URL 공유 / [309] 모드 창작 마당 / [303] 다중 탭 뮤텍스
+import { ReplayShareManager } from './core/replay_share_manager.js';
+import { RuntimeModLoader } from './core/runtime_mod_loader.js';
+import { MultiTabMutexCoordinator } from './core/multi_tab_mutex_coordinator.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
 import { judgeVengeanceOnly, startVengeanceGame, finishVengeance, tryVengeanceOnEncounter, applyVengeanceToUnits } from './core/vengeance_system.js';
 import * as vengeance_system from './core/vengeance_system.js';
@@ -69,6 +73,12 @@ const btnGraph = document.getElementById('btn-graph');
 let engine;
 let bootstrap;
 let isRunning = false;
+// [312] 전투 리플레이 기록기 — 전투마다 초기화, 액션을 실시간 누적
+const replayManager = new ReplayShareManager();
+// [309] 모드 창작 마당 — 엔진 초기화 후 store 주입 (init에서 설정)
+let modLoader = null;
+// [303] 다중 탭 세이브 뮤텍스 — 세이브 전 락 획득, 데드락/충돌 방지
+const mutexCoordinator = new MultiTabMutexCoordinator();
 let isPaused = false;
 let animFrameId = null;
 let lastFrameTime = 0;
@@ -1436,11 +1446,15 @@ const battleUnits = document.getElementById('battle-units');
 const btnBattleStart = document.getElementById('btn-battle-start');
 const btnEndTurn = document.getElementById('btn-end-turn');
 const btnBattleRetreat = document.getElementById('btn-battle-retreat');
+const btnBattleReplay = document.getElementById('btn-battle-replay');
 function enterBattleMode() {
     if (!engine || !isRunning)
         return;
     isBattleMode = true;
     battlePanel.style.display = 'block';
+    // [312] 새 전투 시작 — 리플레이 로그 초기화
+    replayManager.clearLogs();
+    btnBattleReplay.style.display = 'none';
     const battleTiles = hexTiles.map(t => ({
         q: t.q,
         r: t.r,
@@ -1590,6 +1604,10 @@ function enterBattleMode() {
             }
         },
         onAction: updateBattleUI,
+        // [312] 리플레이 기록 — 전투 액션 상세를 실시간 누적
+        onActionDetail: (detail) => {
+            replayManager.recordAction(battleFrontend.getState().turn, detail.officerId || detail.unitId, detail.action, detail.targetOfficerId ?? null, detail.value, detail.q, detail.r);
+        },
     });
     battleFrontend.initBattle(battleTiles, deployable);
     battleFrontend.state.units.push(...enemyUnits);
@@ -1609,6 +1627,8 @@ function updateBattleUI() {
         RESULT: '🏆 전투 종료',
     };
     battlePhase.textContent = phaseNames[state.phase] || state.phase;
+    // [312] 전투 종료 시 리플레이 버튼 표시
+    btnBattleReplay.style.display = state.phase === 'RESULT' && replayManager.logCount > 0 ? 'inline-block' : 'none';
     // Button visibility
     btnBattleStart.style.display = state.phase === 'DEPLOYMENT' ? 'inline-block' : 'none';
     btnEndTurn.style.display = state.phase === 'PLAYER_TURN' ? 'inline-block' : 'none';
@@ -1664,8 +1684,55 @@ btnBattleRetreat.addEventListener('click', () => {
     btnBattleStart.style.display = 'none';
     btnEndTurn.style.display = 'none';
     btnBattleRetreat.style.display = 'none';
+    btnBattleReplay.style.display = 'none';
     addLog('🏳️ 퇴각 — 전투 모드 종료');
 });
+// [312] 리플레이 URL 내보내기 — 전투 종료 후 활성화
+btnBattleReplay.addEventListener('click', async () => {
+    const compressed = await replayManager.exportForUrlSharing();
+    if (!compressed) {
+        addLog('⚠️ 리플레이 기록이 없습니다');
+        return;
+    }
+    const url = `${location.origin}${location.pathname}?replay=${compressed}`;
+    const panel = document.getElementById('replay-panel');
+    document.getElementById('rp-content').textContent = url;
+    panel.style.display = 'flex';
+    addLog(`🎬 리플레이 URL 생성 완료 (${(compressed.length / 1024).toFixed(1)}kB, 액션 ${replayManager.logCount}건)`);
+});
+document.getElementById('rp-close')?.addEventListener('click', () => {
+    document.getElementById('replay-panel').style.display = 'none';
+});
+document.getElementById('rp-copy')?.addEventListener('click', () => {
+    const text = document.getElementById('rp-content').textContent ?? '';
+    void navigator.clipboard?.writeText(text).then(() => addLog('📋 리플레이 URL이 클립보드에 복사되었습니다'));
+});
+// [312] URL에 ?replay= 파라미터가 있으면 리플레이 재생 로그 출력
+function checkReplayParam() {
+    const params = new URLSearchParams(location.search);
+    const replay = params.get('replay');
+    if (!replay)
+        return;
+    void replayManager.importFromCompressedString(replay).then(logs => {
+        if (logs.length === 0) {
+            addLog('⚠️ 리플레이 데이터 복원 실패');
+            return;
+        }
+        addLog(`🎬 공유된 리플레이 발견 — 액션 ${logs.length}건 재생 준비 완료`);
+        // 리플레이 액션을 로그로 순차 출력 (전투 재생 파서 [312])
+        const turns = new Map();
+        for (const l of logs) {
+            if (!turns.has(l.turn))
+                turns.set(l.turn, []);
+            turns.get(l.turn).push(l);
+        }
+        for (const [turn, actions] of [...turns.entries()].sort((a, b) => a[0] - b[0])) {
+            for (const a of actions) {
+                addLog(`  [T${turn}] ${a.officerId} ${a.actionType}${a.targetId ? ` → ${a.targetId}` : ''} (헥스 ${a.x},${a.y}${a.value ? `, 피해 ${a.value}` : ''})`);
+            }
+        }
+    });
+}
 btnBattle.addEventListener('click', () => {
     enterBattleMode();
 });
@@ -1678,11 +1745,17 @@ btnReport.addEventListener('click', () => {
 const slotManager = new SaveSlotManager();
 const saveSlotsPanel = document.getElementById('save-slots-panel');
 const saveSlotList = document.getElementById('ss-slot-list');
-/** 현재 상태를 지정 슬롯에 저장 */
+/** 현재 상태를 지정 슬롯에 저장 — [303] 다중 탭 뮤텍스로 동시 저장 충돌 방지 */
 function saveToSlot(slot) {
     if (!engine)
         return;
+    // [303] 락 획득 시도 — 실패 시 다른 탭이 저장 중
+    if (!mutexCoordinator.acquireLock()) {
+        addLog('⚠️ 동시 저장 불가: 다른 탭에서 게임 중입니다. 해당 탭을 닫고 다시 시도하세요. [303]');
+        return;
+    }
     try {
+        mutexCoordinator.ensureLockOrThrow();
         const compressed = engine.saveCompressed();
         const gs = engine['store'].getGlobalState();
         const faction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
@@ -1716,6 +1789,60 @@ function saveToSlot(slot) {
     catch (err) {
         addLog(`저장 실패: ${err}`);
     }
+    finally {
+        // [303] 저장 완료 후 락 해제
+        mutexCoordinator.releaseLock();
+    }
+}
+/**
+ * [309] 모드 창작 마당 — JSON 모드 파일 드래그&드롭 마운트
+ * SchemaValidator [301]로 검증 후 핫 인젝션 [302], 실패 시 게임에 영향 없음
+ */
+function setupModDragDrop() {
+    const hint = document.getElementById('mod-drop-hint');
+    const toast = document.getElementById('mod-result-toast');
+    let dragDepth = 0;
+    const showToast = (msg, ok) => {
+        toast.textContent = msg;
+        toast.style.background = ok ? 'rgba(40,80,50,0.95)' : 'rgba(90,40,40,0.95)';
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 4000);
+    };
+    window.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer?.types.includes('Files'))
+            return;
+        e.preventDefault();
+        dragDepth++;
+        hint.style.display = 'flex';
+    });
+    window.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0)
+            hint.style.display = 'none';
+    });
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragDepth = 0;
+        hint.style.display = 'none';
+        const file = e.dataTransfer?.files?.[0];
+        if (!file || !modLoader)
+            return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            void modLoader.loadModFromFile(String(reader.result)).then(result => {
+                if (result.success) {
+                    showToast(`📦 모드 마운트 성공: $result.meta.name} v$result.meta.version}`, true);
+                    addLog(`📦 모드 마운트: $result.meta.name} — 무장 $result.stats.officersLoaded} · 세력 $result.stats.factionsLoaded} · 도시 $result.stats.citiesLoaded} [309]`);
+                }
+                else {
+                    showToast(`❌ 모드 검증 실패: $result.errors[0] ?? '알 수 없는 오류'}`, false);
+                    addLog(`❌ 모드 마운트 실패 [301]: $result.errors.join(' / ')}`);
+                }
+            });
+        };
+        void reader.readAsText(file);
+    });
 }
 /** 지정 슬롯에서 불러와 게임 재시작 */
 function loadFromSlot(slot) {
@@ -2202,6 +2329,19 @@ function init() {
     engine = getGameEngine();
     engineRef.current = engine;
     bootstrap = getBootstrap();
+    // [309] 모드 창작 마당 — 스토어 주입 + 로드 완료 콜백
+    modLoader = new RuntimeModLoader(engine['store']);
+    modLoader.onModLoadComplete((result) => {
+        if (result.success) {
+            addLog(`📦 모드 마운트: ${result.meta.name} v${result.meta.version} — 무장 ${result.stats.officersLoaded} · 세력 ${result.stats.factionsLoaded} · 도시 ${result.stats.citiesLoaded} · 이벤트 ${result.stats.eventsLoaded}`);
+            syncChinaMapCities();
+        }
+    });
+    // [303] 다중 탭 뮤텍스 — BroadcastChannel 연결
+    mutexCoordinator.init();
+    window.addEventListener('beforeunload', () => mutexCoordinator.destroy());
+    // [309] 드래그&드롭 모드 마운트 — 화면 전역 드롭 수신
+    setupModDragDrop();
     // Create renderers: 헥사(전투용) + 중국 전도(월드용)
     hexRenderer = new HexMapCanvasRenderer(canvas);
     hexTiles = generateDemoHexTiles();
@@ -2227,7 +2367,11 @@ function init() {
         }
         if (!engine)
             return;
+        // [303] 자동 저장도 뮤텍스로 보호 — 경합 시 이번 달은 건너뜀
+        if (!mutexCoordinator.acquireLock())
+            return;
         try {
+            mutexCoordinator.ensureLockOrThrow();
             const compressed = engine.saveCompressed();
             const gs = engine['store'].getGlobalState();
             const faction = gs.playerFactionId ? engine['store'].getFaction(gs.playerFactionId) : null;
@@ -2240,6 +2384,9 @@ function init() {
         }
         catch {
             // 자동 저장 실패는 무음 처리 (게임 진행 방해하지 않음)
+        }
+        finally {
+            mutexCoordinator.releaseLock();
         }
     });
     engine.subscribe('OFFICER_DEATH', (event) => {
@@ -2648,4 +2795,6 @@ window.__game = {
         }
     },
 };
+// [312] 페이지 로드 시 공유 리플레이 파라미터 확인
+checkReplayParam();
 //# sourceMappingURL=main.js.map

@@ -167,6 +167,37 @@ class GameStore implements IGameStore {
         this.notify();
     }
 
+    /** 세력 추가 — 모딩 핫 인젝션 [309] 및 런타임 세력 생성용. 인덱스 동기화 포함 */
+    addFaction(faction: Faction): void {
+        this.state.factions[faction.id] = faction;
+        for (const cityId of faction.cities) {
+            addToIndex(this.state.byFaction.cities, faction.id, cityId);
+        }
+        for (const officerId of faction.officers) {
+            addToIndex(this.state.byFaction.officers, faction.id, officerId);
+        }
+        for (const armyId of faction.armies) {
+            addToIndex(this.state.byFaction.armies, faction.id, armyId);
+        }
+        this.notify();
+    }
+
+    /** 도시 추가 — 모딩 핫 인젝션 [309] 및 런타임 도시 생성용. 인덱스 동기화 포함 */
+    addCity(city: City): void {
+        this.state.cities[city.id] = city;
+        for (const officerId of city.officerIds) {
+            addToIndex(this.state.byCity.officers, city.id, officerId);
+        }
+        if (city.ownerId) {
+            addToIndex(this.state.byFaction.cities, city.ownerId, city.id);
+            const fac = this.state.factions[city.ownerId];
+            if (fac && !fac.cities.includes(city.id)) {
+                this.state.factions[city.ownerId] = { ...fac, cities: [...fac.cities, city.id] };
+            }
+        }
+        this.notify();
+    }
+
     removeOfficer(id: OfficerID): void {
         const officer = this.state.officers[id];
         if (!officer) {

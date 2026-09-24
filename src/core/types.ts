@@ -419,6 +419,10 @@ export interface IGameStore {
     updateArmy(id: ArmyID, updates: Partial<Army>): void;
     addOfficer(officer: Officer): void;
     removeOfficer(id: OfficerID): void;
+    /** 세력 추가 — 모딩 핫 인젝션 [309] 및 런타임 세력 생성용 */
+    addFaction(faction: Faction): void;
+    /** 도시 추가 — 모딩 핫 인젝션 [309] 및 런타임 도시 생성용 */
+    addCity(city: City): void;
     addRelationship(edge: RelationshipEdge): void;
     setGlobalState(updates: Partial<GlobalState>): void;
     createSnapshot(): NormalizedState;

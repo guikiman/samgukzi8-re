@@ -30,6 +30,10 @@ declare class GameStore implements IGameStore {
     updateCity(id: CityID, updates: Partial<City>): void;
     updateArmy(id: ArmyID, updates: Partial<Army>): void;
     addOfficer(officer: Officer): void;
+    /** 세력 추가 — 모딩 핫 인젝션 [309] 및 런타임 세력 생성용. 인덱스 동기화 포함 */
+    addFaction(faction: Faction): void;
+    /** 도시 추가 — 모딩 핫 인젝션 [309] 및 런타임 도시 생성용. 인덱스 동기화 포함 */
+    addCity(city: City): void;
     removeOfficer(id: OfficerID): void;
     /** 세력 제거 — 멸망 처리용. 소속 도시 무주화 + 무장/인덱스 정리 [213] */
     removeFaction(id: FactionID): void;

@@ -10,6 +10,8 @@
 export class BattleFrontend {
     constructor(renderer) {
         this.deployableUnits = [];
+        /** [312] 전투 턴 카운터 — 리플레이 로그의 turn 필드용 */
+        this.turnCounter = 1;
         // Unit rendering cache
         this.UNIT_COLORS = {
             INFANTRY: '#4488cc',
@@ -49,6 +51,11 @@ export class BattleFrontend {
     setCallbacks(cbs) {
         this.onPhaseChange = cbs.onPhaseChange;
         this.onAction = cbs.onAction;
+        this.onActionDetail = cbs.onActionDetail;
+    }
+    /** [312] 액션 상세 발화 — 리플레이 기록 단일 지점 */
+    fireActionDetail(detail) {
+        this.onActionDetail?.(detail);
     }
     // ============================================================
     // Unit Deployment
@@ -87,6 +94,7 @@ export class BattleFrontend {
         this.state.units.push(battleUnit);
         this.state.actionLog.push(`${unit.officerName} ($unit.unitType) 배치 완료 — 헥스 ($q,$r)`);
         this.onAction?.('deploy');
+        this.fireActionDetail({ action: 'DEPLOY', unitId: unit.unitId, officerId: battleUnit.officerId, q, r, value: 0 });
         return true;
     }
     startBattle() {
@@ -155,6 +163,7 @@ export class BattleFrontend {
         this.state.attackRange = [];
         this.state.actionLog.push(`유닛 이동 → 헥스 ($q,$r) (AP: $unit.movementPoints)`);
         this.onAction?.('move');
+        this.fireActionDetail({ action: 'MOVE', unitId: unit.unitId, officerId: unit.officerId, q, r, value: 0 });
         return true;
     }
     attackUnit(attackerId, targetQ, targetR) {
@@ -172,6 +181,15 @@ export class BattleFrontend {
         this.state.moveRange = [];
         this.state.attackRange = [];
         this.onAction?.('attack');
+        this.fireActionDetail({
+            action: 'ATTACK',
+            unitId: attacker.unitId,
+            officerId: attacker.officerId,
+            q: targetQ,
+            r: targetR,
+            value: killed,
+            targetOfficerId: defender.officerId,
+        });
         if (defender.soldiers <= 0) {
             this.state.actionLog.push(`💀 유닛 ${defender.unitId} 궤멸!`);
             this.state.units = this.state.units.filter(u => u.unitId !== defender.unitId);
@@ -185,10 +203,12 @@ export class BattleFrontend {
             const winner = enemyAlive ? '적군' : '아군';
             this.state.actionLog.push(`🏆 ${winner} 승리!`);
             this.onPhaseChange?.('RESULT');
+            this.fireActionDetail({ action: 'TURN', unitId: '', officerId: '', q: 0, r: 0, value: 0 });
             return;
         }
         this.state.phase = this.state.phase === 'PLAYER_TURN' ? 'ENEMY_TURN' : 'PLAYER_TURN';
         this.state.turn += this.state.phase === 'PLAYER_TURN' ? 1 : 0;
+        this.turnCounter = this.state.turn;
         this.state.currentUnitIndex = 0;
         this.state.selectedUnitId = null;
         this.state.moveRange = [];
@@ -226,12 +246,29 @@ export class BattleFrontend {
                 const killed = Math.min(nearest.soldiers, Math.floor(dmg * (0.3 + Math.random() * 0.4)));
                 nearest.soldiers -= killed;
                 this.state.actionLog.push(`⚔️ 적군 공격! 아군 $killed명 피해 (남은 병력: $nearest.soldiers)`);
+                this.fireActionDetail({
+                    action: 'ATTACK',
+                    unitId: enemy.unitId,
+                    officerId: enemy.officerId,
+                    q: nearest.position.q,
+                    r: nearest.position.r,
+                    value: killed,
+                    targetOfficerId: nearest.officerId,
+                });
             }
             else if (nearest) {
                 // Move toward nearest
                 const dq = Math.sign(nearest.position.q - enemy.position.q);
                 const dr = Math.sign(nearest.position.r - enemy.position.r);
                 enemy.position = { q: enemy.position.q + dq, r: enemy.position.r + dr };
+                this.fireActionDetail({
+                    action: 'MOVE',
+                    unitId: enemy.unitId,
+                    officerId: enemy.officerId,
+                    q: enemy.position.q,
+                    r: enemy.position.r,
+                    value: 0,
+                });
             }
         }
     }

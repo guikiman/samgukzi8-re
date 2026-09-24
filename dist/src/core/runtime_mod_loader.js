@@ -547,7 +547,7 @@ export class RuntimeModLoader {
                 stats.officersLoaded++;
             }
         }
-        // 4b. 세력 주입
+        // 4b. 세력 주입 [309] — addFaction으로 정상 세력 엔티티 생성 (기존에는 무장으로 오주입되던 결함 수정)
         if (data.factions) {
             for (const f of data.factions) {
                 const existing = this.store.getFaction(f.id);
@@ -555,21 +555,40 @@ export class RuntimeModLoader {
                     this.store.updateFaction(f.id, {
                         name: f.name,
                         ...(f.reputation !== undefined ? { reputation: f.reputation } : {}),
+                        ...(f.color !== undefined ? { color: f.color } : {}),
+                        ...(f.lordId !== undefined ? { leaderId: f.lordId } : {}),
                     });
                 }
                 else {
-                    // 신규 세력은 기본 구조로 추가
-                    this.store.addOfficer({
+                    const faction = {
                         id: f.id,
                         name: f.name,
-                        // ... Faction은 types.ts에 addFaction이 없으므로
-                        // GameStore의 setGlobalState로 처리
-                    });
+                        leaderId: f.lordId ?? '',
+                        color: f.color ?? '#888888',
+                        capitalCityId: f.cities?.[0] ?? null,
+                        cities: [...(f.cities ?? [])],
+                        officers: [...(f.officers ?? [])],
+                        armies: [],
+                        gold: 1000,
+                        food: 1000,
+                        reputation: f.reputation ?? 50,
+                        policy: {
+                            recruitmentFocus: 5,
+                            militaryFocus: 5,
+                            economyFocus: 5,
+                            diplomacyFocus: 5,
+                            cultureFocus: 5,
+                        },
+                        diplomacy: {},
+                        isPlayerControlled: false,
+                        techLevel: 1,
+                    };
+                    this.store.addFaction(faction);
                 }
                 stats.factionsLoaded++;
             }
         }
-        // 4c. 도시 주입
+        // 4c. 도시 주입 [309] — addCity로 신규 도시 생성 지원 (기존에는 조용히 무시되던 결함 수정)
         if (data.cities) {
             for (const c of data.cities) {
                 const existing = this.store.getCity(c.id);
@@ -578,11 +597,43 @@ export class RuntimeModLoader {
                         name: c.name,
                         ...(c.population !== undefined ? { population: c.population } : {}),
                         ...(c.loyalty !== undefined ? { loyalty: c.loyalty } : {}),
-                        ...(c.defense !== undefined ? { defense: c.defense } : {}),
+                        ...(c.defense !== undefined ? { defense: c.defense, maxDefense: Math.max(existing.maxDefense, c.defense) } : {}),
+                        ...(c.factionId !== undefined ? { ownerId: c.factionId } : {}),
                     });
                 }
                 else {
-                    // 신규 도시는 GameStore가 addCity를 지원하면 사용
+                    const city = {
+                        id: c.id,
+                        name: c.name,
+                        hexCoord: { q: Math.round(c.x * 8) - 4, r: Math.round(c.y * 8) - 4 },
+                        mapX: c.x,
+                        mapY: c.y,
+                        population: c.population ?? 10000,
+                        defense: c.defense ?? 50,
+                        maxDefense: Math.max(50, c.defense ?? 50),
+                        goldIncome: 100,
+                        foodIncome: 100,
+                        funds: c.gold ?? 500,
+                        facilities: [],
+                        officerIds: [],
+                        ownerId: c.factionId ?? null,
+                        isCapital: false,
+                        development: c.defense ?? 50,
+                        developmentStats: {
+                            commerce: 0,
+                            maxCommerce: 100,
+                            farming: 0,
+                            maxFarming: 100,
+                            technology: 0,
+                            maxTechnology: 100,
+                            publicOrder: 0,
+                            maxPublicOrder: 100,
+                        },
+                        loyalty: c.loyalty ?? 50,
+                        danger: 0,
+                        weather: 'SUNNY',
+                    };
+                    this.store.addCity(city);
                 }
                 stats.citiesLoaded++;
             }

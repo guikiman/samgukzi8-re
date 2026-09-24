@@ -1192,3 +1192,12 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 .ch-year-toggle:hover { background: rgba(212,175,55,.18); }
 .ch-year-arrow { display: inline-block; width: 12px; font-size: .6rem; }
 .ch-year-count { opacity: .55; font-weight: 400; font-size: .64rem; }
+
+/* ==================== 리플레이 공유 패널 [312] ==================== */
+#replay-panel { position: fixed; inset: 0; background: rgba(10, 8, 14, .8); display: none; align-items: center; justify-content: center; z-index: 2200; }
+#replay-panel .rm-frame { max-width: 640px; width: 90%; }
+
+/* ==================== 모드 창작 마당 [309] ==================== */
+#mod-drop-hint { position: fixed; inset: 0; background: rgba(10, 8, 14, .75); display: none; align-items: center; justify-content: center; z-index: 2300; pointer-events: none; }
+.md-hint-frame { border: 2px dashed #d4af37; border-radius: 12px; padding: 32px 56px; font-size: 1.1rem; color: #f0e6c8; background: rgba(30, 24, 16, .92); box-shadow: 0 0 40px rgba(212,175,55,.3); }
+#mod-result-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 8px; color: #fff; font-size: .82rem; z-index: 2400; box-shadow: 0 4px 16px rgba(0,0,0,.5); max-width: 80%; word-break: break-all; }
