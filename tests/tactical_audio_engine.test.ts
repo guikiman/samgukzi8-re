@@ -152,8 +152,15 @@ describe('TacticalAudioEngine [6]', () => {
     });
 
     it('init() 실패 시 false 반환 (AudioContext 생성 불가)', async () => {
+        // 생성자 함수 형태로 목킹해야 new AudioContext()가 호출된다.
+        // vi.fn(arrow)은 생성자로 쓸 수 없어 결정적으로 class 목을 사용 [플레이키 안정화]
+        const FailingAudioContext = class {
+            constructor() {
+                throw new Error('AudioContext not available');
+            }
+        };
         // @ts-expect-error - AudioContext 생성 실패 시뮬레이션
-        globalThis.AudioContext = vi.fn(() => { throw new Error('AudioContext not available'); });
+        globalThis.AudioContext = FailingAudioContext;
         const badAudio = new TacticalAudioEngine();
         const result = await badAudio.init();
         expect(result).toBe(false);

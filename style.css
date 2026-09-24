@@ -1201,3 +1201,9 @@ body[data-season="winter"] { --season-accent: #a8c8e8; --season-glow: rgba(168, 
 #mod-drop-hint { position: fixed; inset: 0; background: rgba(10, 8, 14, .75); display: none; align-items: center; justify-content: center; z-index: 2300; pointer-events: none; }
 .md-hint-frame { border: 2px dashed #d4af37; border-radius: 12px; padding: 32px 56px; font-size: 1.1rem; color: #f0e6c8; background: rgba(30, 24, 16, .92); box-shadow: 0 0 40px rgba(212,175,55,.3); }
 #mod-result-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 8px; color: #fff; font-size: .82rem; z-index: 2400; box-shadow: 0 4px 16px rgba(0,0,0,.5); max-width: 80%; word-break: break-all; }
+
+/* ==================== 타이틀 리플레이 가져오기 [312] ==================== */
+.flow-replay-import { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; padding: 10px; background: rgba(212,175,55,.05); border: 1px solid rgba(212,175,55,.2); border-radius: 8px; }
+.flow-replay-import input { flex: 1; min-width: 220px; background: rgba(0,0,0,.4); border: 1px solid rgba(212,175,55,.35); border-radius: 6px; color: #f0e6c8; font-size: .78rem; padding: 8px 10px; outline: none; }
+.flow-replay-import input:focus { border-color: #d4af37; }
+#replay-import-msg { width: 100%; font-size: .72rem; }

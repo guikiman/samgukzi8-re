@@ -2932,6 +2932,41 @@ document.getElementById('btn-scenario-back')!.addEventListener('click', () => {
     titleScreen.show();
 });
 
+// [312] 타이틀 화면 리플레이 URL 가져오기 — 붙여넣은 URL에서 파라미터 추출 후 재생
+document.getElementById('btn-replay-load')?.addEventListener('click', () => {
+    const input = document.getElementById('replay-url-input') as HTMLInputElement;
+    const msgEl = document.getElementById('replay-import-msg')!;
+    const showMsg = (text: string, ok: boolean): void => {
+        msgEl.textContent = text;
+        msgEl.style.color = ok ? '#9fd6a0' : '#e08a80';
+        msgEl.style.display = 'block';
+    };
+    if (!input.value.trim()) {
+        showMsg('URL을 입력하세요', false);
+        return;
+    }
+    // 전체 URL 또는 압축 문자열만 직접 허용
+    let param = input.value.trim();
+    const m = param.match(/[?&]replay=([A-Za-z0-9\-_.~]+)/);
+    if (m) param = m[1];
+    void replayManager.importFromCompressedString(param).then(logs => {
+        if (logs.length === 0) {
+            showMsg('❌ 리플레이 복원 실패 — URL이 올바른지 확인하세요', false);
+            return;
+        }
+        replayViewer = new ReplayViewer({ addLog });
+        const unitCount = replayViewer.load(logs);
+        if (unitCount === 0) {
+            showMsg('❌ 리플레이에 유닛 정보가 없습니다', false);
+            return;
+        }
+        document.getElementById('scenario-screen')!.style.display = 'none';
+        document.getElementById('title-screen')!.style.display = 'none';
+        addLog(`🎬 리플레이 로드 완료 — 액션 ${logs.length}건, 유닛 ${unitCount} (자동 재생)`);
+        replayViewer.play();
+    });
+});
+
 document.getElementById('btn-faction-back')!.addEventListener('click', () => {
     factionScreen.style.display = 'none';
     scenarioScreen.style.display = 'flex';
