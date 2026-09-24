@@ -313,5 +313,15 @@
     </div>
 </div>
 <script type="module" src="dist/src/main.js"></script>
+<script>
+    // [E43] PWA ServiceWorker 등록 — 오프라인 캐싱 플레이 지원
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('sw.js').catch(function () {
+                // 등록 실패(예: 비보안 컨텍스트) 시에도 게임은 정상 구동
+            });
+        });
+    }
+</script>
 </body>
 </html>

@@ -184,6 +184,48 @@
                     }
                 }
             ]
+        },
+        {
+            "scenarioId": "06",
+            "chainId": "chain_06_northern_expedition",
+            "chainName": "출사표 — 오장원의 별",
+            "nodes": [
+                {
+                    "eventId": "ev_06_chu_shi_biao",
+                    "eventName": "출사표",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 227 },
+                        { "type": "warlord_alive", "targetId": "liu_bei" },
+                        { "type": "warlord_alive", "targetId": "zhuge_liang" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "제갈량: 신본은 본래 남양에서 밭을 가던 일개 평민이었습니다. 선제께서 신의 비루함을 아랑곳하지 않으시고 초려에 삼고초려하여 주셨습니다.",
+                            "제갈량이 출사표를 올리고 북벌의 대원정에 나섰다. 한나라의 부흥을 바라는 마지막 충의였다."
+                        ],
+                        "rewards": { "moraleAll": 5, "strategicFlag": "northern_expedition_begun" }
+                    }
+                },
+                {
+                    "eventId": "ev_06_wuzhang_star",
+                    "eventName": "오장원의 별 낙하",
+                    "priority": 9,
+                    "conditions": [
+                        { "type": "year", "minValue": 234 },
+                        { "type": "warlord_alive", "targetId": "zhuge_liang" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "큰 별이 오장원 하늘에서 붉게 떨어졌다.",
+                            "제갈량이 오장원에서 별이 되었다. 슬픔에 잠긴 촉군의 병사들이 물러났다."
+                        ],
+                        "rewards": { "moraleAll": -8, "chaosFlag": "zhuge_liang_fallen" }
+                    }
+                }
+            ]
         }
     ]
 }
