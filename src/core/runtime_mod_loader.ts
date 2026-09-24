@@ -679,8 +679,10 @@ export class RuntimeModLoader {
             };
         }
 
-        // 2. Schema 검증
-        const validationErrors = this.validator.validate(data, true);
+        // 2. Schema 검증 — 기존 무장/세력/도시와 ID가 겹치면 '업데이트'로 처리하므로
+        // 중복 차단은 '신규'로 간주되는 항목에만 적용된다 (isNew=false로 전달하면
+        // 기존 엔티티 업데이트 경로를 허용). 업데이트/신규 혼합 모드 지원 [309]
+        const validationErrors = this.validator.validate(data, false);
         if (validationErrors.length > 0) {
             return {
                 meta: data.meta,

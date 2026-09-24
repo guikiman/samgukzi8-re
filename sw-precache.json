@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-24T06:30:32.904Z",
+  "generated": "2026-09-24T06:50:46.361Z",
   "files": [
     "dist/src/ai/ai_stream_manager.js",
     "dist/src/ai/ai_stream_worker.js",
@@ -361,6 +361,7 @@
     "dist/src/core/relation_dynamic_generator.js",
     "dist/src/core/render_queue_types.js",
     "dist/src/core/replay_share_manager.js",
+    "dist/src/core/replay_viewer.js",
     "dist/src/core/reputation_effect_system.js",
     "dist/src/core/reputation_rumor_system.js",
     "dist/src/core/reputation_visuals.js",

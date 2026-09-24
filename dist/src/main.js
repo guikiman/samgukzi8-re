@@ -18,6 +18,7 @@ import { FactionRelation } from './core/diplomacy_engine.js';
 import { processBattleSpoils } from './core/battle_spoils_system.js';
 // [312] 전투 리플레이 URL 공유 / [309] 모드 창작 마당 / [303] 다중 탭 뮤텍스
 import { ReplayShareManager } from './core/replay_share_manager.js';
+import { ReplayViewer } from './core/replay_viewer.js';
 import { RuntimeModLoader } from './core/runtime_mod_loader.js';
 import { MultiTabMutexCoordinator } from './core/multi_tab_mutex_coordinator.js';
 import { checkInteraction, executeInteraction, getAffinityBetween } from './core/officer_interaction_system.js';
@@ -1312,6 +1313,11 @@ function renderFrame(_dt) {
         ctx.textAlign = 'start';
         return;
     }
+    // [312] 리플레이 재생 모드 — 전투 UI 대신 리플레이 뷰어 렌더
+    if (replayViewer) {
+        updateReplayViewer(_dt);
+        return;
+    }
     if (isBattleMode && battleFrontend) {
         battleFrontend.render(ctx, canvas.width, canvas.height);
     }
@@ -1707,7 +1713,8 @@ document.getElementById('rp-copy')?.addEventListener('click', () => {
     const text = document.getElementById('rp-content').textContent ?? '';
     void navigator.clipboard?.writeText(text).then(() => addLog('📋 리플레이 URL이 클립보드에 복사되었습니다'));
 });
-// [312] URL에 ?replay= 파라미터가 있으면 리플레이 재생 로그 출력
+// [312] 리플레이 뷰어 — 공유 URL 접속 시 헥스 맵 애니메이션 재생
+let replayViewer = null;
 function checkReplayParam() {
     const params = new URLSearchParams(location.search);
     const replay = params.get('replay');
@@ -1718,20 +1725,32 @@ function checkReplayParam() {
             addLog('⚠️ 리플레이 데이터 복원 실패');
             return;
         }
-        addLog(`🎬 공유된 리플레이 발견 — 액션 ${logs.length}건 재생 준비 완료`);
-        // 리플레이 액션을 로그로 순차 출력 (전투 재생 파서 [312])
-        const turns = new Map();
-        for (const l of logs) {
-            if (!turns.has(l.turn))
-                turns.set(l.turn, []);
-            turns.get(l.turn).push(l);
+        // 리플레이 재생 모드 — 타이틀을 덮고 헥스 전장에서 애니메이션 재생 [312]
+        replayViewer = new ReplayViewer({ addLog });
+        const unitCount = replayViewer.load(logs);
+        if (unitCount === 0) {
+            addLog('⚠️ 리플레이에 유닛 정보가 없습니다');
+            return;
         }
-        for (const [turn, actions] of [...turns.entries()].sort((a, b) => a[0] - b[0])) {
-            for (const a of actions) {
-                addLog(`  [T${turn}] ${a.officerId} ${a.actionType}${a.targetId ? ` → ${a.targetId}` : ''} (헥스 ${a.x},${a.y}${a.value ? `, 피해 ${a.value}` : ''})`);
-            }
-        }
+        document.getElementById('title-screen').style.display = 'none';
+        addLog(`🎬 공유된 리플레이 로드 완료 — 액션 ${logs.length}건, 유닛 ${unitCount} (자동 재생)`);
+        replayViewer.play();
     });
+}
+/** 리플레이 뷰어 프레임 처리 — gameLoop에서 매 프레임 호출 */
+function updateReplayViewer(dt) {
+    if (!replayViewer)
+        return;
+    replayViewer.update(dt * 1000);
+    // 전장 렌더: 기본 헥스 타일 + 유닛 오버레이
+    hexRenderer.render(hexTiles, canvas.width, canvas.height);
+    replayViewer.draw(ctx, 30, canvas.width / 2, canvas.height / 2);
+    // 재생 안내 오버레이
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, 320, 28);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px "Malgun Gothic", sans-serif';
+    ctx.fillText(replayViewer.isFinished ? '🏁 리플레이 종료 — 새로고침으로 다시 재생' : `🎬 리플레이 재생 중 (${replayViewer.actionCount} 액션)`, 10, 20);
 }
 btnBattle.addEventListener('click', () => {
     enterBattleMode();
