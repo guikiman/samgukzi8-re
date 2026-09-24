@@ -1,20 +1,22 @@
-name: "Desktop Build & Release"
+name: Desktop Release
+
 on:
   push:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   publish-tauri:
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
-    matrix:
-      include:
-        - platform: 'macos-latest'
-        - platform: 'windows-latest'
-        - platform: 'ubuntu-22.04'
+      matrix:
+        include:
+          - platform: macos-latest
+          - platform: windows-latest
+          - platform: ubuntu-22.04
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -23,7 +25,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 22
+          cache: npm
 
       - name: Install Rust tooling
         uses: dtolnay/rust-toolchain@stable
@@ -43,7 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: rtk8-desktop-v__VERSION__
-          releaseName: "삼국지 8 리메이크 데스크톱 v__VERSION__"
-          releaseBody: "자동 생성된 Tauri 데스크톱 플랫폼 패키지 릴리즈입니다."
+          releaseName: 'RTK8 Remake Desktop v__VERSION__'
+          releaseBody: '자동 생성된 Tauri 데스크톱 플랫폼 패키지 릴리즈입니다.'
           releaseDraft: true
           prerelease: false
