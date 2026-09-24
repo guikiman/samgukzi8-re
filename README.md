@@ -10,6 +10,8 @@
 ## 🎮 플레이
 
 - **온라인**: GitHub Pages 배포 URL (CI가 main/hippocamp 푸시 시 자동 배포)
+- **오프라인**: 첫 접속 후 ServiceWorker가 앱 셸 + dist 전체(500+ 모듈)를 프리캐시 —
+  이후 네트워크 없이도 리로드/플레이 가능 [E43]
 - **로컬**: `npm run build` 후 프로젝트 루트를 정적 서버로 서빙 (예: `python -m http.server 8000`) → `index.html` 접속
 
 ## 🛠️ 개발
@@ -18,12 +20,12 @@
 npm install            # 의존성 설치
 npm run check          # 타입 체크 (tsc --noEmit)
 npm test               # 유닛/통합 테스트 (vitest)
-npm run build          # TS 빌드 (dist/)
-npm run test:e2e       # 빌드 + 브라우저 E2E 스모크 (headless Chrome)
+npm run build          # TS 빌드 (dist/) + sw-precache.json 매니페스트 생성
+npm run test:e2e       # 빌드 + 브라우저 E2E 스모크 + SW 오프라인 검증 (headless Chrome)
 ```
 
 ### CI 파이프라인
-`.github/workflows/ci.yml` — push/PR 시 **타입 체크 → 939개 테스트 → 빌드 → E2E** 순차 실행 후, 기본 브랜치 푸시에 한해 GitHub Pages 자동 배포.
+`.github/workflows/ci.yml` — push/PR 시 **타입 체크 → 1,135개 테스트 → 빌드 → E2E** 순차 실행 후, 기본 브랜치 푸시에 한해 GitHub Pages 자동 배포.
 
 ## 🏗️ 아키텍처 요약
 
@@ -36,6 +38,8 @@ npm run test:e2e       # 빌드 + 브라우저 E2E 스모크 (headless Chrome)
 | 전투 | 헥사곤 A* + ZOC/보급/기상 (`astar_hex_pathfinder.ts`, `battle_*`) |
 | 그래프 | 무장 관계망 (`relationship_graph_evaluator.ts`) |
 | 포팅 | Python 30개 모듈 → TS (평정 [76-85], 기후 [321-340], 첩보 [341-360], 인생 [421-438], 메타 [213-214] 등) |
+| 연의전 | 6개 시나리오 전체 이벤트 체인 (황건적→출사표) — 시작 연도 실발동 순회 테스트 보장 [300][106-114] |
+| PWA | ServiceWorker 프리캐시 + 네비게이션 폴백 (`sw.js`, `sw-precache.json`) [E43] |
 
 ## 📜 라이선스
 
