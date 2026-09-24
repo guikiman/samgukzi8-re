@@ -68,6 +68,8 @@ jobs:
           mkdir -p pages
           cp index.html style.css pages/
           cp -r dist pages/dist
+          # [E43] PWA 오프라인 캐싱 — SW + 프리캐시 매니페스트 포함
+          cp sw.js sw-precache.json pages/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
