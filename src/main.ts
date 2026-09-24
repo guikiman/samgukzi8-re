@@ -1463,6 +1463,9 @@ async function startGame(world: BuiltWorld | null = null): Promise<void> {
                 playerFactionId: world.playerFactionId,
                 selectedOfficerId: world.factions.find(f => f.id === world.playerFactionId)?.leaderId ?? null,
                 difficulty,
+                // 시나리오 시작 연월 주입 [300] — 누락 시 기본값(192년)으로 남아
+                // 연의전 이벤트의 연도 조건이 전부 어긋난다
+                time: { year: world.startYear, month: world.startMonth },
             });
         } catch (err) {
             addLog(`월드 초기화 실패: ${err}`);

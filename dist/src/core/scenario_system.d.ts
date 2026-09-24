@@ -55,6 +55,9 @@ export interface BuiltWorld {
         id: string;
         difficulty: number;
     };
+    /** 시나리오 시작 연월 — GlobalState.time 주입용 [300] (누락 시 이벤트 연도 조건이 전부 어긋남) */
+    startYear: number;
+    startMonth: number;
 }
 export declare function buildWorld(scenario: ScenarioData, playerFactionIndex: number): BuiltWorld;
 //# sourceMappingURL=scenario_system.d.ts.map

@@ -239,6 +239,9 @@ export interface BuiltWorld {
     playerFactionId: string;
     /** 시나리오 난이도 (1~5) — GlobalState.difficulty로 주입 [X-난이도] */
     scenario?: { id: string; difficulty: number };
+    /** 시나리오 시작 연월 — GlobalState.time 주입용 [300] (누락 시 이벤트 연도 조건이 전부 어긋남) */
+    startYear: number;
+    startMonth: number;
 }
 
 /**
@@ -422,5 +425,7 @@ export function buildWorld(scenario: ScenarioData, playerFactionIndex: number): 
         cities,
         playerFactionId: `fac_${playerFactionIndex}`,
         scenario: { id: scenario.id, difficulty: scenario.difficulty },
+        startYear: year,
+        startMonth: parseStartDate(scenario.start_date).month,
     };
 }

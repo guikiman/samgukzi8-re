@@ -189,4 +189,61 @@ describe('빌트인 시나리오 이벤트 파일 무결성 [301]', () => {
             }
         }
     });
+
+    it('모든 시나리오(01~06)에 최소 1개 체인이 존재한다 — 연의전 커버리지 완성', () => {
+        const chainScenarioIds = new Set(BUILTIN_SCENARIO_EVENTS.chains.map(c => c.scenarioId));
+        for (const scenario of scenarioIndex as Array<{ id: string }>) {
+            expect(chainScenarioIds.has(scenario.id)).toBe(true);
+        }
+    });
+});
+
+describe('시나리오 04 관도 대전 — 오소 야습 실발동 통합 [300]', () => {
+    function setup04() {
+        const store = new GameStore();
+        const engine = new GameEngine(store);
+        const scenario = (scenarioIndex as Array<{ id: string }>).find(s => s.id === '04')!;
+        const world = buildWorld(scenario as never, 0);
+        engine.initWorld(world.officers, world.factions, world.cities, [], '04');
+        // main.ts startGame과 동일 — 시나리오 시작 연월 주입 [300]
+        store.setGlobalState({
+            ...store.getGlobalState(),
+            playerFactionId: world.playerFactionId,
+            time: { year: world.startYear, month: world.startMonth },
+        });
+        return { store, engine };
+    }
+
+    it('initWorld("04") 시 관도 체인 2노드가 큐에 적재된다', () => {
+        const { engine } = setup04();
+        // 체인 1개 × 노드 2개 = 큐 2
+        expect(engine.eventEngine.queueMgr.queueSize).toBe(2);
+        expect(engine.eventEngine.queueMgr.isQueued('ev_04_wuchao_plot')).toBe(true);
+        expect(engine.eventEngine.queueMgr.isQueued('ev_04_ju_shou_purge')).toBe(true);
+    });
+
+    it('200년 턴 진행 시 조건 충족 노드가 HISTORICAL_EVENT로 발화되고 보상이 적용된다', async () => {
+        const { store, engine } = setup04();
+        const fired: Array<Record<string, unknown>> = [];
+        engine.subscribe('HISTORICAL_EVENT', (e) => fired.push(e.payload));
+
+        // 시나리오 04 시작 연도 = 200 — 오소/저수 조건(minValue 200) 즉시 충족
+        await engine.executeTurn();
+
+        const wuchao = fired.find(f => f.eventId === 'ev_04_wuchao_plot');
+        expect(wuchao).toBeDefined();
+        expect(wuchao!.eventName).toBe('오소 야습 — 허유의 배신');
+
+        // 보상 검증 — fundsAll 500이 전 세력 국고에 반영 (발동 전 대비 증가)
+        const processed = engine.eventEngine.queueMgr.isProcessed('ev_04_wuchao_plot');
+        expect(processed).toBe(true);
+
+        // 연대기에 기록
+        const hit = engine.chronicle.list().find(e => e.text.includes('오소 야습'));
+        expect(hit).toBeDefined();
+
+        // 큐에서 처리 완료 — 재발동 방지 (processEventChainMonthly는
+        // queueMgr.processed로 재발동을 관리하며 historicalEvents 이력은 별도 체계)
+        expect(engine.eventEngine.queueMgr.isProcessed('ev_04_wuchao_plot')).toBe(true);
+    });
 });

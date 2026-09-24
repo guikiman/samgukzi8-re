@@ -350,6 +350,8 @@ export function buildWorld(scenario, playerFactionIndex) {
         cities,
         playerFactionId: `fac_${playerFactionIndex}`,
         scenario: { id: scenario.id, difficulty: scenario.difficulty },
+        startYear: year,
+        startMonth: parseStartDate(scenario.start_date).month,
     };
 }
 //# sourceMappingURL=scenario_system.js.map
