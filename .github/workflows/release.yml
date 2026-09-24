@@ -40,6 +40,34 @@ jobs:
       - name: Install Frontend Dependencies
         run: npm install
 
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          # 이전 태그 → 현재 태그 사이의 커밋 로그로 릴리즈 노트 자동 생성
+          PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | sed -n '2p')
+          CUR_TAG=${GITHUB_REF_NAME}
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$CUR_TAG" ]; then
+            LOG=$(git log --oneline --no-decorate "$PREV_TAG..$CUR_TAG" | sed 's/^/  - /')
+          else
+            LOG='  - 최초 정식 릴리즈'
+          fi
+          {
+            echo '### 변경사항'
+            echo "$LOG"
+            echo
+            echo '### 웹 버전'
+            echo 'https://guikiman.github.io/samgukzi8-re/ — PWA 오프라인 플레이 지원'
+          } > release_notes.md
+
+          # 멀티라인 output 처리 — EOF 구분자 사용
+          {
+            echo 'body<<EOF_NOTES'
+            cat release_notes.md
+            echo 'EOF_NOTES'
+          } >> "$GITHUB_OUTPUT"
+          cat release_notes.md
+
       - name: Build and Publish with Tauri Action
         uses: tauri-apps/tauri-action@v1
         env:
@@ -47,6 +75,6 @@ jobs:
         with:
           tagName: rtk8-desktop-v__VERSION__
           releaseName: 'RTK8 Remake Desktop v__VERSION__'
-          releaseBody: '자동 생성된 Tauri 데스크톱 플랫폼 패키지 릴리즈입니다.'
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
