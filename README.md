@@ -2,10 +2,8 @@
 
 삼국지조8의 핵심 시스템(평정·내정·외교·전투·인간관계·인생 시뮬레이션)을 웹 기술로 완전 복제하는 프로젝트입니다. 520개 체크리스트 기반으로 구현되었으며, 1,000명 규모 무장 AI를 Web Worker로 처리합니다.
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
-[![Play](https://img.shields.io/badge/▶_플레이-GitHub_Pages-2ea44f)](https://OWNER.github.io/REPO/)
-
-> ⚠️ 위 배지/링크의 `OWNER/REPO`는 원격 저장소 추가 후 실제 값으로 교체하세요.
+[![CI](https://github.com/guikiman/samgukzi8-re/actions/workflows/ci.yml/badge.svg)](https://github.com/guikiman/samgukzi8-re/actions/workflows/ci.yml)
+[![Play](https://img.shields.io/badge/▶_플레이-GitHub_Pages-2ea44f)](https://guikiman.github.io/samgukzi8-re/)
 
 ## 🎮 플레이
 
