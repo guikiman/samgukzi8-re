@@ -15,3 +15,6 @@ test_output.txt
 # OS 노이즈
 Thumbs.db
 .DS_Store
+
+# 로컬 개인 설정 — 토큰 포함 가능성으로 원격 비추적
+opencode.json
