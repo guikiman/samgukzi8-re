@@ -12,6 +12,20 @@
   이후 네트워크 없이도 리로드/플레이 가능 [E43]
 - **로컬**: `npm run build` 후 프로젝트 루트를 정적 서버로 서빙 (예: `python -m http.server 8000`) → `index.html` 접속
 
+### 💻 데스크톱 버전 (Tauri)
+
+[![Desktop Release](https://img.shields.io/badge/⬇_다운로드-v1.0.0-2ea44f)](https://github.com/guikiman/samgukzi8-re/releases/tag/rtk8-desktop-v1.0.0)
+
+| 플랫폼 | 파일 | 비고 |
+|---|---|---|
+| Windows 10/11 (x64) | `rtk8-clone_1.0.0_x64-setup.exe` | 설치형 (`.msi`도 제공) |
+| macOS 11+ (Apple Silicon) | `rtk8-clone_1.0.0_aarch64.dmg` | 드래그&드롭 설치 |
+| Linux (x64) | `rtk8-clone_1.0.0_amd64.AppImage` | 실행권한 부여 후 바로 실행 (`.deb`/`.rpm`도 제공) |
+
+> 새 태그(`v*`) 푸시 시 GitHub Actions가 3개 플랫폼 패키지를 자동 빌드해
+> [Releases](https://github.com/guikiman/samgukzi8-re/releases)에 등록합니다.
+> 데스크톱 빌드도 웹과 동일한 PWA 오프라인 캐싱을 지원합니다.
+
 ## 🛠️ 개발
 
 ```bash
