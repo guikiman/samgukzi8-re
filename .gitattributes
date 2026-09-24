@@ -1,0 +1,2 @@
+# 워크플로우 YAML은 LF 강제 — CRLF가 GitHub Actions 파싱을 깨뜨림
+.github/**/*.yml text eol=lf
