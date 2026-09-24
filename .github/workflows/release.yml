@@ -21,6 +21,9 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 이전 태그 대비 로그 생성을 위해 전체 히스토리+태그 fetch
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
