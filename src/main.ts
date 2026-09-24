@@ -1867,16 +1867,35 @@ function updateReplayViewer(dt: number): void {
     // 전장 렌더: 기본 헥스 타일 + 유닛 오버레이
     hexRenderer.render(hexTiles, canvas.width, canvas.height);
     replayViewer.draw(ctx, 30, canvas.width / 2, canvas.height / 2);
-    // 재생 안내 오버레이
+    // 재생 안내 + 진행률 바 오버레이
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(0, 0, 320, 28);
+    ctx.fillRect(0, 0, 340, 46);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px "Malgun Gothic", sans-serif';
     ctx.fillText(
-        replayViewer.isFinished ? '🏁 리플레이 종료 — 새로고침으로 다시 재생' : `🎬 리플레이 재생 중 (${replayViewer.actionCount} 액션)`,
+        replayViewer.isFinished ? '🏁 리플레이 종료 — 새로고침으로 다시 재생' : `🎬 리플레이 재생 중 (${replayViewer.actionCount} 액션 · ${replayViewer.speed}x)`,
         10, 20,
     );
+    // 진행률 바 [461-480]
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.fillRect(10, 32, 320, 6);
+    ctx.fillStyle = '#d4af37';
+    ctx.fillRect(10, 32, 320 * replayViewer.progress, 6);
 }
+
+// [312] 리플레이 컨트롤 키바인딩 — Space 일시정지, 1~4 속도 배율
+document.addEventListener('keydown', (e) => {
+    if (!replayViewer || replayViewer.isFinished) return;
+    if (e.key === ' ') {
+        e.preventDefault();
+        replayViewer.togglePause();
+    } else if (e.key >= '1' && e.key <= '4') {
+        const mult = Number(e.key);
+        replayViewer.setSpeed(mult);
+    } else if (e.key === '0') {
+        replayViewer.setSpeed(0.5);
+    }
+});
 
 btnBattle.addEventListener('click', () => {
     enterBattleMode();

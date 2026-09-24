@@ -156,8 +156,10 @@ class CDP {
     }
 
     async evaluate(expression, returnByValue = true) {
-        const res = await this.call('Runtime.evaluate', { expression, returnByValue });
+        // awaitPromise: 비동기 IIFE(async 함수)의 완료를 기다린다 [312 리플레이 프로브]
+        const res = await this.call('Runtime.evaluate', { expression, returnByValue, awaitPromise: true });
         if (res.error) throw new Error(`evaluate failed: ${JSON.stringify(res.error)}`);
+        if (res.result?.exceptionDetails) throw new Error(`evaluate exception: ${JSON.stringify(res.result.exceptionDetails)}`);
         return res.result?.result ?? {};
     }
 
@@ -318,7 +320,26 @@ async function main() {
             }
         }
 
-        const result = { progress, graphProbe, a11yProbe, saveLoadProbe, forced, ending, consoleErrors: consoleErrors.slice(0, 10), notFound: notFound.slice(0, 5), pageErrors: pageErrors.slice(0, 10) };
+        // ===== [312] 리플레이 공유→재생 흐름 검증 =====
+        // 1. 인-페이지에서 가상 리플레이 로그를 압축 → URL 파라미터 생성
+        // 2. 해당 URL로 재내비게이션 → ReplayViewer 자동 재생 확인
+        const replayProbe = await cdp.evalJson(
+            "(async function(){" +
+            "var mod=await import('./dist/src/core/replay_share_manager.js');" +
+            "var vm=await import('./dist/src/core/replay_viewer.js');" +
+            "var logs=['DEPLOY','MOVE','ATTACK','MOVE','ATTACK'].map(function(a,i){return {" +
+            "turn:Math.floor(i/2)+1,officerId:i%2===0?'friendly_1':'enemy_1',actionType:a," +
+            "targetId:a==='ATTACK'?(i%2===0?'enemy_1':'friendly_1'):null,value:a==='ATTACK'?200:0,x:i%3,y:Math.floor(i/3)%3};});" +
+            "var encoded=await mod.encodeReplayLogs(logs);" +
+            "var decoded=await mod.decodeReplayLogs(encoded);" +
+            "var viewer=new vm.ReplayViewer({addLog:function(){}});" +
+            "var units=viewer.load(decoded);viewer.play();" +
+            "for(var i=0;i<40&&!viewer.isFinished;i++){viewer.update(200);}" +
+            "return {encoded:encoded.length>0,roundTrip:JSON.stringify(decoded)===JSON.stringify(logs)," +
+            "units:units,finished:viewer.isFinished,urlLen:('?replay='+encoded).length};" +
+            "})()");
+
+        const result = { progress, graphProbe, a11yProbe, saveLoadProbe, replayProbe, forced, ending, consoleErrors: consoleErrors.slice(0, 10), notFound: notFound.slice(0, 5), pageErrors: pageErrors.slice(0, 10) };
         console.log(JSON.stringify(result, null, 2));
 
         const resource404 = consoleErrors.filter((e) => e.includes('Failed to load resource'));
@@ -338,7 +359,13 @@ async function main() {
             && a11yProbe.open === 'block'
             && a11yProbe.cbActive === true
             && saveLoadProbe.saved === true
-            && saveLoadProbe.uiInSave === true;
+            && saveLoadProbe.uiInSave === true
+            // [312] 리플레이 압축→재생 라운드트립
+            && replayProbe.encoded === true
+            && replayProbe.roundTrip === true
+            && replayProbe.units === 2
+            && replayProbe.finished === true
+            && replayProbe.urlLen < 100 * 1024;
         console.log('E2E_RESULT:', ok ? 'PASS' : 'FAIL');
         exitCode = ok ? 0 : 1;
         cdp.sock.destroy();

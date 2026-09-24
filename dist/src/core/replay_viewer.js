@@ -27,8 +27,10 @@ export class ReplayViewer {
         this.stepTimer = 0;
         this.playing = false;
         this.finished = false;
-        /** 재생 속도 — 액션 간 간격 (ms) */
+        /** 재생 속도 — 액션 간 기본 간격 (ms) */
         this.stepIntervalMs = 450;
+        /** 재생 속도 배율 [461-480] — 1x 기본, 0.5x~4x */
+        this.speedMultiplier = 1;
         this.flashDurationMs = 500;
         this.cb = cb;
     }
@@ -75,6 +77,16 @@ export class ReplayViewer {
             return;
         this.playing = !this.playing;
     }
+    /** 재생 속도 배율 설정 (0.5x ~ 4x) — 액션 간격을 역수로 조절 */
+    setSpeed(multiplier) {
+        const clamped = Math.max(0.5, Math.min(4, multiplier));
+        this.speedMultiplier = clamped;
+    }
+    get speed() { return this.speedMultiplier; }
+    /** 커서 위치 (진행률 표시용) */
+    get progress() {
+        return this.logs.length === 0 ? 0 : this.cursor / this.logs.length;
+    }
     get isPlaying() { return this.playing; }
     get isFinished() { return this.finished; }
     get unitCount() { return this.units.size; }
@@ -94,7 +106,8 @@ export class ReplayViewer {
             if (u.flashMs > 0)
                 u.flashMs = Math.max(0, u.flashMs - dt);
         }
-        this.stepTimer += dt;
+        // 속도 배율 반영 — dt를 배율만큼 가속
+        this.stepTimer += dt * this.speedMultiplier;
         while (this.stepTimer >= this.stepIntervalMs) {
             this.stepTimer -= this.stepIntervalMs;
             this.stepForward();

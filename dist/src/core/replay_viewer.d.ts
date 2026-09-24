@@ -51,8 +51,10 @@ export declare class ReplayViewer {
     private stepTimer;
     private playing;
     private finished;
-    /** 재생 속도 — 액션 간 간격 (ms) */
+    /** 재생 속도 — 액션 간 기본 간격 (ms) */
     private stepIntervalMs;
+    /** 재생 속도 배율 [461-480] — 1x 기본, 0.5x~4x */
+    private speedMultiplier;
     private readonly flashDurationMs;
     private readonly cb;
     constructor(cb: ReplayViewerCallbacks);
@@ -65,6 +67,11 @@ export declare class ReplayViewer {
     play(): void;
     /** 일시정지/재개 */
     togglePause(): void;
+    /** 재생 속도 배율 설정 (0.5x ~ 4x) — 액션 간격을 역수로 조절 */
+    setSpeed(multiplier: number): void;
+    get speed(): number;
+    /** 커서 위치 (진행률 표시용) */
+    get progress(): number;
     get isPlaying(): boolean;
     get isFinished(): boolean;
     get unitCount(): number;
