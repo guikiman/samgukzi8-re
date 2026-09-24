@@ -247,3 +247,77 @@ describe('시나리오 04 관도 대전 — 오소 야습 실발동 통합 [300]
         expect(engine.eventEngine.queueMgr.isProcessed('ev_04_wuchao_plot')).toBe(true);
     });
 });
+
+describe('전 시나리오(01~06) 연의전 순회 실발동 [300][106-114]', () => {
+    /** main.ts startGame과 동일한 부팅 절차 — 시나리오 시작 연월 주입 포함 */
+    function bootScenario(scenarioId: string, playerIndex = 0) {
+        const store = new GameStore();
+        const engine = new GameEngine(store);
+        const scenario = (scenarioIndex as Array<{ id: string }>).find(s => s.id === scenarioId)!;
+        const world = buildWorld(scenario as never, playerIndex);
+        engine.initWorld(world.officers, world.factions, world.cities, [], scenarioId);
+        store.setGlobalState({
+            ...store.getGlobalState(),
+            playerFactionId: world.playerFactionId,
+            time: { year: world.startYear, month: world.startMonth },
+        });
+        return { store, engine, world };
+    }
+
+    /** 시나리오 ID → 시작 연도에 조건이 즉시 충족되는 노드 ID 목록 */
+    const FIRST_TURN_EXPECTED: Record<string, string[]> = {
+        '01': ['ev_01_turbans_rise', 'ev_01_royal_decrees'],
+        '02': ['ev_02_hulao_gate'],
+        '03': ['ev_03_lu_bu_strikes', 'ev_03_taoyuan_three'],
+        '04': ['ev_04_wuchao_plot', 'ev_04_ju_shou_purge'],
+        '05': ['ev_05_longzhong_plan'],
+        '06': ['ev_06_chu_shi_biao', 'ev_06_wuzhang_star'],
+    };
+
+    it('모든 시나리오에서 시작 연월 주입 후 첫 턴에 예상 노드가 발화한다', async () => {
+        for (const [scenarioId, expectedIds] of Object.entries(FIRST_TURN_EXPECTED)) {
+            const { engine } = bootScenario(scenarioId);
+            const fired: Array<Record<string, unknown>> = [];
+            engine.subscribe('HISTORICAL_EVENT', (e) => fired.push(e.payload));
+
+            await engine.executeTurn();
+
+            const firedIds = fired.map(f => String(f.eventId));
+            for (const id of expectedIds) {
+                expect(firedIds).toContain(id);
+            }
+            // 발화한 노드는 모두 처리 완료 — 재발동 없음
+            for (const id of expectedIds) {
+                expect(engine.eventEngine.queueMgr.isProcessed(id)).toBe(true);
+            }
+        }
+    });
+
+    it('모든 warlord_alive 조건 대상이 해당 시나리오 로스터에 존재한다 — 조건 영구 실패 방지', () => {
+        for (const chain of BUILTIN_SCENARIO_EVENTS.chains) {
+            const scenario = (scenarioIndex as Array<{ id: string }>).find(s => s.id === chain.scenarioId)!;
+            const roster = new Set(buildWorld(scenario as never, 0).officers.map(o => o.id));
+            for (const node of chain.nodes) {
+                for (const cond of node.conditions) {
+                    if (cond.type === 'warlord_alive' || cond.type === 'warlord_dead') {
+                        expect(roster.has(cond.targetId!)).toBe(true);
+                    }
+                }
+            }
+        }
+    });
+
+    it('연도 조건의 발동 창이 시나리오 시작 연도 이후에 존재한다', () => {
+        for (const chain of BUILTIN_SCENARIO_EVENTS.chains) {
+            const scenario = (scenarioIndex as Array<{ id: string }>).find(s => s.id === chain.scenarioId)!;
+            const startYear = parseInt(scenario.start_date.split('-')[0], 10);
+            for (const node of chain.nodes) {
+                const yearConds = node.conditions.filter(c => c.type === 'year');
+                if (yearConds.length === 0) continue;
+                const windowEnd = Math.min(...yearConds.map(c => c.maxValue ?? Infinity));
+                // 발동 창의 끝이 시작 연도보다 과거면 영구 발동 불가
+                expect(windowEnd).toBeGreaterThanOrEqual(startYear);
+            }
+        }
+    });
+});
