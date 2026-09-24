@@ -143,6 +143,48 @@
             ]
         },
         {
+            "scenarioId": "04",
+            "chainId": "chain_04_guandu",
+            "chainName": "관도 대전 — 화북의 주도권",
+            "nodes": [
+                {
+                    "eventId": "ev_04_wuchao_plot",
+                    "eventName": "오소 야습 — 허유의 배신",
+                    "priority": 10,
+                    "conditions": [
+                        { "type": "year", "minValue": 200, "maxValue": 202 },
+                        { "type": "warlord_alive", "targetId": "cao_cao" },
+                        { "type": "warlord_alive", "targetId": "yuan_shao" }
+                    ],
+                    "result": {
+                        "eventType": "BATTLE_SCENE",
+                        "dialogueLines": [
+                            "허유: 원소공은 모사의 계를 받아들이지 않으십니다. 이제 화북의 주인은 정해졌습니다.",
+                            "조조가 허유의 항복을 받고 원소의 병참기지 오소를 불태웠다. 관도의 승패가 갈렸다."
+                        ],
+                        "rewards": { "moraleAll": -5, "fundsAll": 500, "strategicFlag": "wuchao_burned" }
+                    }
+                },
+                {
+                    "eventId": "ev_04_ju_shou_purge",
+                    "eventName": "원씨의 내분 — 저수의 죽음",
+                    "priority": 8,
+                    "conditions": [
+                        { "type": "year", "minValue": 200, "maxValue": 203 },
+                        { "type": "warlord_alive", "targetId": "yuan_shao" }
+                    ],
+                    "result": {
+                        "eventType": "SCENE",
+                        "dialogueLines": [
+                            "곽도: 저수공은 패전의 책임을 물어 형명에 처해질 것입니다.",
+                            "원소는 패전 후 저수를 사형했다. 원씨 진영의 모사들이 떨어져 나갔다."
+                        ],
+                        "rewards": { "moraleAll": -3, "chaosFlag": "yuan_clinic_strife" }
+                    }
+                }
+            ]
+        },
+        {
             "scenarioId": "05",
             "chainId": "chain_05_three_kingdoms",
             "chainName": "삼국정립 — 천하 삼분",
